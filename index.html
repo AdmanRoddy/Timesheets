@@ -2108,7 +2108,10 @@ function renderCrew(keepFilters){
     $("cfQ").value = CF.q; $("cfCrew").value = CF.crew; $("cfActive").value = CF.active; $("cfSort").value = CF.sort;
   }
   const list = crewFilter(all).sort(crewSort);
-  $("crewCount").textContent = list.length===all.length ? all.length+" people on the list" : list.length+" of "+all.length+" people match";
+  const inactive = all.filter(e=>e.active===false).length, narrowed = !!(CF.q.trim() || CF.crew || CF.role || CF.under);
+  $("crewCount").textContent = narrowed ? list.length+" of "+all.length+" people match"
+    : CF.active==="active" ? list.length+" active"+(inactive?" · "+inactive+" inactive hidden (Show: Everyone)":"")
+    : CF.active==="inactive" ? list.length+" inactive" : all.length+" people on the list";
   $("crewTable").innerHTML = !list.length
     ? (all.length ? '<div class="empty">Nobody matches that search.</div>' : '<div class="empty">'+(seesAll()?"No employees yet. Add the men on the crews. You only do this once.":"Nobody reports to you yet. Add your men here, or have an admin point them at you on the Employees tab.")+'</div>')
   : '<table><thead><tr><th style="width:90px">Number</th><th>Name</th><th>Class</th><th>Crew</th>'+(rol?'<th>Role</th>':"")+'<th>Reports to</th><th>Color</th>'+(adm?'<th class="n">Cost $/hr</th><th class="n">OT $/hr</th><th class="n">DT $/hr</th>':"")+'<th>Active</th><th></th></tr></thead><tbody>'+
@@ -4288,7 +4291,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v41";
+const APP_VERSION = "v42";
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
