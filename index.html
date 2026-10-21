@@ -57,7 +57,9 @@ header.top button.b.ghost{background:transparent;color:#fff;border-color:rgba(25
 .jact{display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:14px;padding-bottom:10px}
 .jdel{margin-left:auto;padding-bottom:8px}
 .jmk{margin-top:8px}
-.jsite{margin-top:8px}.jloc{flex:1 1 260px;max-width:340px}.jsite .chip,.jsite .mini{margin-bottom:10px}
+.jsite{margin-top:8px}.jtime{margin-top:8px}
+tr.grp td{background:var(--tile);font-family:"Barlow Semi Condensed",sans-serif;font-weight:700;font-size:16px;padding:9px 10px;border-top:2px solid var(--line)}
+tr.grp .mini{font-family:Inter,sans-serif;font-weight:500;font-size:12px}.jloc{flex:1 1 260px;max-width:340px}.jsite .chip,.jsite .mini{margin-bottom:10px}
 .jfm{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
 .jfl{font-size:12px;font-weight:600;color:var(--ink-2);margin-right:4px}
 .jfm .chip{display:inline-flex;align-items:center;gap:4px;padding:3px 4px 3px 10px}
@@ -184,6 +186,13 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
 .jobbtn{display:block;width:100%;text-align:left;padding:15px 16px;margin-bottom:9px;border:1.5px solid var(--line);background:var(--tile);color:var(--ink);cursor:pointer;font-family:"Barlow Semi Condensed",sans-serif;font-size:19px;font-weight:600;border-radius:12px}
 .jobbtn small{display:block;font-family:Inter,sans-serif;font-weight:400;color:var(--ink-2);font-size:13px;margin-top:3px}
 .jobbtn:active{background:var(--field)}
+.ktabs{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap}
+.ktabs button{flex:1 1 120px;padding:12px 10px;border:1.5px solid var(--line);background:var(--tile);color:var(--ink);border-radius:12px;font-family:"Barlow Semi Condensed",sans-serif;font-size:19px;font-weight:600;cursor:pointer}
+.ktabs button small{display:block;font-family:Inter,sans-serif;font-weight:400;font-size:12px;color:var(--ink-2);margin-top:2px}
+.ktabs button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.ktabs button.on small{color:#c9d3df}
+.jfold{display:flex;align-items:baseline;gap:10px;margin:18px 0 2px;padding-bottom:4px;border-bottom:2px solid var(--line);font-family:"Barlow Semi Condensed",sans-serif;font-size:20px;font-weight:700;color:var(--navy)}
+.jfold .mini{font-weight:400}
 .big{font-size:20px;padding:16px 26px;width:100%;margin-top:10px}
 .onclock{background:rgba(30,122,70,.1);border-left:5px solid var(--ok);padding:14px 16px;font-size:16px;margin-bottom:14px;border-radius:0 10px 10px 0}
 .cal{width:100%;border-collapse:collapse;table-layout:fixed}
@@ -350,6 +359,7 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
         <label class="f">Description (what the crew sees)<input type="text" id="jDesc" placeholder="Tower B: level 3 rough-in" style="width:260px"></label>
         <label class="f">Project manager<select id="jPm"></select></label>
         <label class="f">Superintendent<select id="jSuper"></select></label>
+        <label class="f">Project folder<select id="jProj"></select></label>
         <button class="b" id="jAdd">Add job</button>
       </div>
       <div id="jobTable"></div>
@@ -375,6 +385,7 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
           <button class="b ghost sm" id="tcNext" aria-label="Next day">&rarr;</button>
           <button class="b ghost sm" id="tcToday">Today</button>
         </span>
+        <label class="f" id="tcProjWrap" hidden>Project<select id="tcProj"></select></label>
         <div class="spacer"></div>
         <button class="b" id="tcAdd">Add a punch by hand</button>
       </div>
@@ -466,6 +477,29 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
   <div class="card"><h2>Billing<span class="tag">Rates live on the Employees tab; PM and job overhead and profit on the Jobs tab</span></h2><div class="body">
     <div class="grid2" id="setGrid"></div>
     <p class="hint"><strong>Overhead and profit</strong> ("10 and 5"): overhead is figured on the labor total, then profit on that total including the overhead. Both percentages and both bases can be changed here. Each PM can set his own pair on the Jobs tab, and any job can override either figure. They print on their own lines of the Daily Time &amp; Material form. Changes only affect how sheets are totalled from now on: nothing already exported changes.</p>
+  </div></div>
+  <div class="card"><h2>Schedule &amp; overtime<span class="tag">Local 175 Inside Agreement, Article III</span></h2><div class="body">
+    <div class="row">
+      <label class="f">Usual work week<select id="setSched"><option value="5x8">5 × 8s (Mon–Fri)</option><option value="4x10">4 × 10s (Mon–Thu)</option></select></label>
+      <label class="f">Usual start time<input type="time" id="setStart" style="width:130px"></label>
+      <label class="f">RT / OT / DT at clock-out<select id="setAuto"><option value="1">Figured automatically</option><option value="0">All hours to Reg; office moves OT</option></select></label>
+      <label class="f">Hours before the start time count as<select id="setEarly"><option value="dt">Double time (agreement)</option><option value="ot">Time and a half</option></select></label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label class="f">Night shift is<select id="setNight"><option value="swing">Swing (+17.3%)</option><option value="grave">Graveyard (+31.4%)</option><option value="none">No premium</option></select></label>
+      <label class="f">Swing %<input class="num" type="number" step="0.1" min="0" id="setSwing" style="width:90px"></label>
+      <label class="f">Graveyard %<input class="num" type="number" step="0.1" min="0" id="setGrave" style="width:90px"></label>
+      <button class="b ghost sm" id="otApply">Re-figure this week's RT/OT/DT</button>
+    </div>
+    <p class="hint">How the hours fall (Section 3.02a): on a <strong>5 × 8</strong> the first 4 hours after the scheduled quitting time are time and a half; on a <strong>4 × 10</strong> the first 2 hours after quitting are time and a half and the first 12 hours Friday are time and a half. <strong>Saturday</strong>: first 12 hours time and a half. <strong>Sunday and holidays</strong>: all double time. Everything outside those windows: double time. A <strong>night shift</strong> (3.11) is paid at the shift rate for 8 hours, then time and a half. Quitting time is the job's start time plus 8 (or 10) hours plus the unpaid meal period. Each job can override the schedule, start time and shift type on the Jobs tab. Lines the office has already moved by hand are never re-figured unless you choose to.</p>
+    <h3 style="font-size:13px;margin:14px 0 6px;color:var(--ink-2)">Holidays (all double time)</h3>
+    <div id="holList"></div>
+    <div class="row" style="margin-top:8px">
+      <label class="f">Add a day<input type="date" id="holDate"></label>
+      <label class="f">Name<input type="text" id="holName" placeholder="Plant shutdown" style="width:200px"></label>
+      <button class="b ghost sm" id="holAdd">Add holiday</button>
+    </div>
+    <p class="hint">From Section 3.02: New Year's Day, Memorial Day, Independence Day, Labor Day, Thanksgiving, the day after Thanksgiving, Christmas Eve and Christmas Day. A holiday on Saturday is kept on Friday; on Sunday it is kept on Monday. Untick a day to pay it as a normal day this year.</p>
   </div></div>
   <div class="card"><h2>Health check<span class="tag">Run this after any setup change</span></h2>
     <div class="body"><div id="health"></div>
@@ -878,8 +912,8 @@ const TPL_DAY = {                        /* the real daily time & material form 
 
 /* ---------------------------------------------------------------- store */
 const KEY = "adman_field_v1";
-const ROLES = ["employee","foreman","super","pm","office","admin"];
-const OFFICE = ["super","pm","office","admin"];
+const ROLES = ["employee","foreman","super","pm","office","safety","admin"];
+const OFFICE = ["super","pm","office","safety","admin"];        // safety: the Employees tab only
 const hasNum = v => v!==null && v!==undefined && v!=="" && !isNaN(+v);
 const SHIFTS = ["day","night"];
 /* Adman classifications, in rank order. Every PO carries a rate for each; a man
@@ -895,7 +929,7 @@ const DEFAULTS = {
   employees: [], pms: [], jobs: [], days: {},
   punches: [], timeoff: [], kiosk: true,
   settings: { otMult:1.5, dtMult:2, oh:10, profit:5, compound:true, ohBase:"labor", classRates:{}, adminPin:"0000",
-              roundTo:0.25, mealMin:15, mealAfter:6, geoMode:"block", geoFt:1000, remLeads:"instant, 48, 24", remMails:"" }
+              roundTo:0.25, mealMin:15, mealAfter:6, geoMode:"block", geoFt:1000, sched:"5x8", startTime:"07:00", autoSplit:true, earlyAs:"dt", nightShift:"swing", swingPct:17.3, gravePct:31.4, holidaysExtra:[], holidaysOff:[], remLeads:"instant, 48, 24", remMails:"" }
 };
 let db = load();
 function load(){
@@ -972,6 +1006,9 @@ function sanitize(d){
     j.desc = typeof j.desc==="string" ? j.desc : "";
     if(!(j.site && isFinite(+j.site.lat) && isFinite(+j.site.lon))) delete j.site;
     if(hasNum(j.siteFt)) j.siteFt = +j.siteFt; else delete j.siteFt;
+    if(!["","5x8","4x10"].includes(j.sched||"")) j.sched = "";
+    if(!/^\d{2}:\d{2}$/.test(j.start||"")) j.start = "";
+    if(!["","swing","grave","none"].includes(j.nightShift||"")) j.nightShift = "";
     if(!j.rates || typeof j.rates!=="object") j.rates = {};
     Object.keys(j.rates).forEach(k=>{ if(!hasNum(j.rates[k])) delete j.rates[k]; else j.rates[k]=+j.rates[k]; });
     j.markupOff = !!j.markupOff; });
@@ -1054,7 +1091,7 @@ function abc(arr){ return [...arr].sort(ABC); }
 function sortBooks(d){
   (d.employees||[]).sort((a,b)=>ABC(a.name,b.name));
   (d.pms||[]).sort((a,b)=>ABC(a.name,b.name));
-  (d.jobs||[]).sort((a,b)=>ABC(a.po,b.po)||ABC(a.name,b.name));
+  (d.jobs||[]).sort((a,b)=>ABC(jobProj(a)||"\uffff",jobProj(b)||"\uffff")||ABC(a.po,b.po)||ABC(a.name,b.name));
 }
 
 let saveTimer=null;
@@ -1116,7 +1153,7 @@ function dialog(msg, opts){
     if(!host){ host=document.createElement("div"); host.id="dlg"; document.body.appendChild(host); }
     const o = Object.assign({ok:"OK", cancel:null, input:false, danger:false}, opts||{});
     host.innerHTML = '<div class="dlg-back"><div class="dlg-box"><p>'+esc(msg).replace(/\n/g,"<br>")+"</p>"+
-      (o.input?'<input type="text" id="dlgIn" inputmode="numeric" autocomplete="off" style="width:100%;margin:8px 0 14px">':"")+
+      (o.input?'<input type="text" id="dlgIn" inputmode="'+(o.mode||"numeric")+'" autocomplete="off" autocapitalize="characters" style="width:100%;margin:8px 0 14px">':"")+
       '<div class="row" style="justify-content:flex-end">'+
       (o.cancel?'<button class="b ghost" id="dlgNo">'+esc(o.cancel)+"</button>":"")+
       '<button class="b'+(o.danger?" red":"")+'" id="dlgOk">'+esc(o.ok)+"</button></div></div></div>";
@@ -1190,7 +1227,7 @@ function myPms(){ return ME ? db.pms.filter(p=>p.empId===ME.id).map(p=>p.id) : [
 function seesAll(){ return !ME || ME.role==="admin" || ME.role==="office"; }   // office admin: everything but Settings
 function canSeeEmp(id){
   if(seesAll()) return true;
-  if(ME.role==="pm") return true;              // PMs see the whole employee list
+  if(ME.role==="pm" || ME.role==="safety") return true;   // PMs and the safety team see the whole employee list
   if(!id) return true;
   if(id===ME.id) return true;
   return underOf(ME.id).has(id);
@@ -1213,6 +1250,39 @@ const visPeople = () => db.employees.filter(e=>canSeeEmp(e.id));
 /* what the crew sees for a job on the keypad: the PM's description, else the job name. Never the PO. */
 function crewJobTitle(j){ return j ? ((j.desc||"").trim() || (j.name||"").trim() || "Job") : "(job removed)"; }
 function jobForemen(j){ return ((j&&j.foremen)||[]).map(emp).filter(Boolean); }
+/* project folders: a job's proj puts it under DNN4, DNN5 and so on. Folders exist only through the jobs in them. */
+function jobProj(j){ return String((j&&j.proj)||"").trim(); }
+function projList(jobs){ return [...new Set((jobs||db.jobs).map(jobProj).filter(Boolean))].sort(ABC); }
+function projOf(name, jobs){ return (jobs||db.jobs).filter(j=>jobProj(j)===name); }
+/* the folder a man used last, if it is one of the given ones */
+function lastProj(empId, tabs){
+  const ps = db.punches.filter(p=>p.empId===empId && p.tin).sort((a,b)=>String(b.tin).localeCompare(String(a.tin)));
+  for(const p of ps){ const j=job(p.jobId); if(!j) continue; const f=jobProj(j)||"*"; if(tabs.includes(f)) return f; }
+  return "";
+}
+/* <select> options grouped by folder. allowProj adds "proj:NAME" entries that stand for a whole folder. */
+function jobOptHTML(jobs, cur, first, allowProj, short){
+  const fl = projList(jobs), loose = jobs.filter(j=>!jobProj(j));
+  const opt = j => '<option value="'+j.id+'"'+(j.id===cur?" selected":"")+'>'+esc(j.po)+(short?"":" · "+esc(j.name))+"</option>";
+  let h = first ? '<option value="">'+esc(first)+"</option>" : "";
+  if(allowProj && fl.length) h += fl.map(f=>'<option value="proj:'+esc(f)+'"'+("proj:"+f===cur?" selected":"")+'>'+esc(f)+": every job in the folder</option>").join("");
+  fl.forEach(f=>{ h += '<optgroup label="'+esc(f)+'">'+projOf(f,jobs).map(opt).join("")+"</optgroup>"; });
+  if(loose.length) h += fl.length ? '<optgroup label="No folder">'+loose.map(opt).join("")+"</optgroup>" : loose.map(opt).join("");
+  return h;
+}
+function fillJobSelect(el, jobs, first, keep, allowProj){ el.innerHTML = jobOptHTML(jobs, keep, first, allowProj); if(keep && [...el.options].some(o=>o.value===keep)) el.value = keep; }
+/* a filter value is a job id, or "proj:NAME" for every job in that folder */
+function jobMatch(j, v){ if(!v) return true; if(String(v).startsWith("proj:")) return !!j && jobProj(j)===String(v).slice(5); return !!j && j.id===v; }
+function jobFilterLabel(v){ if(!v) return ""; if(String(v).startsWith("proj:")) return String(v).slice(5); return (job(v)||{}).po||""; }
+/* the folder dropdown on a job card and the add row */
+function projSelHTML(attr, cur){ return '<option value="">No folder</option>'+projList().map(f=>'<option value="'+esc(f)+'"'+(f===cur?" selected":"")+'>'+esc(f)+"</option>").join("")+'<option value="__new">New folder…</option>'; }
+async function pickProj(sel, cur){
+  if(sel.value!=="__new") return sel.value.trim();
+  const name = await dialog("Name of the new project folder (DNN4, DNN5, Advent Health…)", {ok:"Save", cancel:"Cancel", input:true, mode:"text"});
+  const v = String(name||"").trim();
+  if(!v){ sel.value = cur||""; return cur||""; }
+  return v;
+}
 /* jobs a man can clock in on: the ones his foreman is assigned to; else the ones under his super; else all */
 function jobsFor(empId){
   const e = emp(empId); if(!e) return [];
@@ -1255,9 +1325,82 @@ function classRate(j, cls){
   const cr = (db.settings.classRates||{})[cls];
   return hasNum(cr) ? +cr : 0;
 }
-function lineRate(e, j){
+function nightPct(j){
+  const t = (j && j.nightShift) || db.settings.nightShift || "swing";
+  return t==="grave" ? (+db.settings.gravePct||0) : t==="none" ? 0 : (+db.settings.swingPct||0);
+}
+function lineRate(e, j, shift){
   if(!e) return 0;
-  return Math.max(+e.rate||0, classRate(j, e.cls));
+  const base = Math.max(+e.rate||0, classRate(j, e.cls));
+  if(okShift(shift)==="night" && nightPct(j)) return Math.round(base*(1+nightPct(j)/100)*100)/100;   // swing +17.3%, graveyard +31.4%
+  return base;
+}
+
+/* ---------------------------------------------------------------- Local 175 Inside Agreement, Article III
+   Holidays (3.02): all work at double time. Saturday holiday is kept Friday, Sunday holiday is kept Monday. */
+function nthDow(y, m, dow, n){            // dow: 0 Sun .. 6 Sat; n>0 nth from the start, n<0 from the end
+  if(n>0){ const d=new Date(y,m,1); const off=(dow-d.getDay()+7)%7; return D.iso(new Date(y,m,1+off+(n-1)*7)); }
+  const d=new Date(y,m+1,0); const off=(d.getDay()-dow+7)%7; return D.iso(new Date(y,m+1,0-off+(n+1)*7));
+}
+function holidaysFor(y){
+  const base = [
+    ["New Year's Day",        y+"-01-01"],
+    ["Memorial Day",          nthDow(y,4,1,-1)],
+    ["Independence Day",      y+"-07-04"],
+    ["Labor Day",             nthDow(y,8,1,1)],
+    ["Thanksgiving Day",      nthDow(y,10,4,4)],
+    ["Day after Thanksgiving",nthDow(y,10,5,4)],
+    ["Christmas Eve",         y+"-12-24"],
+    ["Christmas Day",         y+"-12-25"]
+  ];
+  return base.map(([name,date])=>{ const dow=D.dow(date); const observed = dow===5 ? D.add(date,-1) : dow===6 ? D.add(date,1) : date; return {name, date, observed}; });
+}
+function holidayOn(date){
+  if(!date) return null;
+  const y = +String(date).slice(0,4);
+  const off = new Set(db.settings.holidaysOff||[]);
+  for(const yy of [y-1,y,y+1]){ const h = holidaysFor(yy).find(h=>h.observed===date && !off.has(h.observed)); if(h) return h.name; }
+  const ex = (db.settings.holidaysExtra||[]).find(h=>h && h.date===date);
+  return ex ? (ex.name||"Holiday") : null;
+}
+const jobSched = j => (j && j.sched) || db.settings.sched || "5x8";
+const jobStart = j => (j && j.start) || db.settings.startTime || "07:00";
+/* Work week and overtime (3.01, 3.02a, 3.11), figured by the clock the way the agreement reads:
+     5/8:  8 hours from the job's start time; the first 4 hours after the scheduled quitting time Mon-Fri are 1.5x
+     4/10: 10 hours from the start time Mon-Thu; the first 2 hours after quitting time are 1.5x; the first 12 hours Friday are 1.5x
+     Saturday: first 12 hours 1.5x.  Sunday and holidays: everything 2x.  Anything outside those windows: 2x.
+     Night shift (3.11): the first 8 hours at the shift rate, the rest 1.5x.
+   Returns paid hours split into rt / ot / dt. */
+function splitPunch(p, j){
+  const H = Math.round((+p.hours||0)*100)/100;
+  const z = {rt:0, ot:0, dt:0};
+  if(!(H>0) || !p.tin || !p.tout) return Object.assign(z, {rt:H});
+  const date = p.date || T.dateOf(p.tin), dow = D.dow(date);
+  const r2 = v => Math.round(v*100)/100;
+  if(holidayOn(date) || dow===6) return Object.assign(z, {dt:H});
+  const ten = jobSched(j)==="4x10";
+  if(dow===5 || (ten && dow===4)){ const ot=Math.min(12,H); return Object.assign(z, {ot:r2(ot), dt:r2(H-ot)}); }
+  if(okShift(p.shift)==="night"){ const rt=Math.min(8,H); return Object.assign(z, {rt:r2(rt), ot:r2(H-rt)}); }
+  const R = ten?10:8, W = ten?2:4;
+  const tin=new Date(p.tin), tout=new Date(p.tout);
+  const startIso = T.atHM(date, jobStart(j)); if(!startIso) return Object.assign(z, {rt:H});
+  const start = new Date(startIso);
+  const unpaid = Math.max(0, (tout-tin)/3600000 - H);                    // the meal period sits inside the regular stretch
+  const quit = new Date(start.getTime() + (R+unpaid)*3600000);
+  const otEnd = new Date(quit.getTime() + W*3600000);
+  const clip = (a,b) => Math.max(0, (Math.min(tout,b)-Math.max(tin,a))/3600000);
+  const early = clip(new Date(0), start);
+  let reg = Math.max(0, clip(start, quit) - unpaid);
+  let ot = clip(quit, otEnd), dt = clip(otEnd, new Date(8.64e15));
+  let rt = Math.min(R, reg); ot += reg - rt;
+  if(db.settings.earlyAs==="ot") ot += early; else dt += early;
+  const tot = rt+ot+dt; if(tot>0 && Math.abs(tot-H)>0.001){ rt*=H/tot; ot*=H/tot; dt*=H/tot; }
+  rt=r2(rt); ot=r2(ot); dt=r2(H-rt-ot); if(dt<0){ ot=r2(ot+dt); dt=0; }
+  return {rt, ot, dt};
+}
+function lineSplit(p){
+  const h = Math.round((+p.hours||0)*100)/100;
+  return db.settings.autoSplit===false ? {rt:h, ot:0, dt:0} : splitPunch(p, job(p.jobId));
 }
 /* Adman's way: overhead on the labor total (or labor plus material, by setting),
    then profit on that total including the overhead when compounded */
@@ -1276,7 +1419,7 @@ function formTotals(f){
   let rt=0, ot=0, dt=0, cost=0;
   const jj = job(f.jobId);
   f.crew.forEach(c=>{
-    const e = emp(c.empId); const r = lineRate(e, jj);
+    const e = emp(c.empId); const r = lineRate(e, jj, f.shift);
     rt += +c.rt||0; ot += +c.ot||0; dt += +c.dt||0;
     cost += (+c.rt||0)*r + (+c.ot||0)*r*s.otMult + (+c.dt||0)*r*s.dtMult;
   });
@@ -1306,14 +1449,15 @@ const TABS = {
   super: ["daily","weekly","crew","jobs","clock","timeoff","reports","export"],
   pm:    ["daily","weekly","crew","jobs","clock","timeoff","reports","export","settings"],
   office:["daily","weekly","crew","jobs","clock","timeoff","reports","export"],
+  safety:["crew"],
   admin: ["daily","weekly","crew","jobs","clock","timeoff","reports","export","settings"]
 };
 function applyRole(){
   const allowed = TABS[(ME&&ME.role)||"super"] || TABS.super;
   document.querySelectorAll("nav button").forEach(b=>{ b.hidden = !allowed.includes(b.dataset.v); });
   const cur = document.querySelector('nav button[aria-current="true"]');
-  if(!cur || cur.hidden) document.querySelector('nav button[data-v="daily"]').click();
-  const tag = $("meTag"); if(tag) tag.textContent = ME ? ME.name+" · "+ME.role+(seesAll()?"":" · "+visJobs().length+" job"+(visJobs().length===1?"":"s")) : "";
+  if(!cur || cur.hidden) document.querySelector('nav button[data-v="'+allowed[0]+'"]').click();
+  const tag = $("meTag"); if(tag) tag.textContent = ME ? ME.name+" · "+ME.role+((seesAll()||ME.role==="safety")?"":" · "+visJobs().length+" job"+(visJobs().length===1?"":"s")) : "";
 }
 
 /* ---------------------------------------------------------------- nav */
@@ -1373,7 +1517,7 @@ function post(p){
     line = {empId:p.empId, rt:"", ot:"", dt:"", punchId:p.id}; f.crew.push(line);
   }
   line.empId = p.empId;
-  if(!line._e) line.rt = p.hours;                                           // never undo an office correction
+  if(!line._e){ const s = lineSplit(p); line.rt = s.rt; line.ot = s.ot||""; line.dt = s.dt||""; }   // never undo an office correction
 }
 function repost(p){ unpost(p); post(p); }
 /* paid hours: time on the clock less the unpaid meal period, when the shift is long enough to have one.
@@ -1511,6 +1655,10 @@ function renderDaily(){
 function renderFlags(){
   const forms = dayForms(curDate, curShift);
   const flags=[];
+  { const hol = holidayOn(curDate), dow = D.dow(curDate);
+    if(hol) flags.push(["<strong>"+esc(hol)+"</strong>: every hour today is double time (Section 3.02).","warn"]);
+    else if(dow===6) flags.push(["<strong>Sunday</strong>: every hour is double time (Section 3.02).","warn"]);
+    else if(dow===5) flags.push(["<strong>Saturday</strong>: the first 12 hours are time and a half, anything past that double time.","warn"]); }
   if(!visCrew().length) flags.push(["Add your employees first: Employees tab. Names come from that list so hours always match up.","warn"]);
   if(ME && ME.role==="foreman" && !visJobs().length){ flags.push(["No jobs show for you yet. Your superintendent needs to be set on the Employees tab (Reports to), and the job needs that superintendent.","warn"]); }
   else if(!seesAll() && !visJobs().length){ flags.push(["No jobs are assigned to you yet. A PM or admin sets the superintendent on each job (Jobs tab), and links each PM to their sign-in number.","warn"]); }
@@ -1544,13 +1692,12 @@ function formHTML(f,i){
   const t = formTotals(f);
   const j = job(f.jobId); const p = pmOf(f.jobId);
   const $$ = money$();
-  const jobOpts = ['<option value="">Pick a job</option>'].concat(
-    visJobs().filter(x=>x.active!==false || x.id===f.jobId).map(x=>'<option value="'+x.id+'"'+(x.id===f.jobId?" selected":"")+">"+esc(x.po)+" · "+esc(x.name)+"</option>")).join("");
+  const jobOpts = jobOptHTML(visJobs().filter(x=>x.active!==false || x.id===f.jobId), f.jobId, "Pick a job");
   const empOpts = e => ['<option value="">Pick a man</option>'].concat(
     crewOnly().filter(x=>(x.active!==false && canSeeEmp(x.id)) || x.id===e).sort(byName).map(x=>'<option value="'+x.id+'"'+(x.id===e?" selected":"")+">"+esc(x.name)+(x.crew==="night"?" (N)":"")+"</option>")).join("");
 
   const crewRows = f.crew.map((c,k)=>{
-    const e = emp(c.empId); const r = lineRate(e, j); const s=db.settings;
+    const e = emp(c.empId); const r = lineRate(e, j, f.shift); const s=db.settings;
     const lineCost = (+c.rt||0)*r+(+c.ot||0)*r*s.otMult+(+c.dt||0)*r*s.dtMult;
     return '<tr><td><select data-a="crewEmp" data-f="'+f.id+'" data-k="'+k+'"'+(c.punchId?' data-p="'+esc(c.punchId)+'"':"")+'>'+empOpts(c.empId)+'</select></td>'+
       ['rt','ot','dt'].map(h=>'<td class="n"><input class="h num" type="number" step="0.25" min="0" data-a="crewH" data-h="'+h+'" data-f="'+f.id+'" data-k="'+k+'" value="'+(c[h]||"")+'"></td>').join("")+
@@ -1617,7 +1764,7 @@ function refreshCalcs(){
     set("pmname", p ? "PM: "+p.name : "");
     set("headsum", hrs(t.hours)+" hr"+(money$()?" · "+money(t.billed)+" billed":""));
     f.crew.forEach((c,k)=>{
-      const e = emp(c.empId), r = lineRate(e, j), s = db.settings;
+      const e = emp(c.empId), r = lineRate(e, j, f.shift), s = db.settings;
       set("rowhrs", hrs((+c.rt||0)+(+c.ot||0)+(+c.dt||0)), '[data-k="'+k+'"]');
       set("rowcost", money((+c.rt||0)*r+(+c.ot||0)*r*s.otMult+(+c.dt||0)*r*s.dtMult), '[data-k="'+k+'"]');
     });
@@ -1694,7 +1841,7 @@ function renderWeekly(){
   $("wWeek").value = wkEnd; $("wShift").value = wkShift;
   fillSelect($("wPm"), [["","All project managers"]].concat(db.pms.map(p=>[p.id,p.name])), wkPm);
   $("wPm").value = wkPm;
-  fillSelect($("wAddJob"), [["","Pick a job"]].concat(visJobs().filter(j=>j.active!==false).map(j=>[j.id,j.po+" · "+j.name])), "");
+  fillJobSelect($("wAddJob"), visJobs().filter(j=>j.active!==false), "Pick a job", "");
 
   const days = Array.from({length:7},(_,i)=>D.add(wkEnd,i-6));
   const recs = collect(d=>days.includes(d)).filter(r=>okShift(r.form.shift)===wkShift && (!wkPm || r.pm.id===wkPm));
@@ -1737,7 +1884,7 @@ function weekBlock(j, days){
       const line = cellLine(d, j.id, e.id);
       const vals = WKCOLS[di].map(h=>{
         const v = line ? (+line[h]||0) : 0; sum+=v;
-        const r=lineRate(e, j), m=h==="rt"?1:h==="ot"?db.settings.otMult:db.settings.dtMult; cost+=v*r*m;
+        const r=lineRate(e, j, wkShift), m=h==="rt"?1:h==="ot"?db.settings.otMult:db.settings.dtMult; cost+=v*r*m;
         return '<input class="wk num" type="number" step="0.25" min="0" data-w="'+j.id+'|'+d+'|'+e.id+'|'+h+'" value="'+(v||"")+'" placeholder="'+h.toUpperCase()+'" title="'+h.toUpperCase()+'">';
       }).join("");
       return '<td class="n wkcell">'+vals+"</td>";
@@ -1853,10 +2000,13 @@ function renderCrew(keepFilters){
   $("cBoss").innerHTML = bossOpts("");
   $("crewHint").textContent = adm
     ? "Cost rate is what the man costs Adman per straight-time hour; overtime and double time use the multipliers on Settings. Rates feed every cost and billing figure on the reports."+(rol?" Roles are set here too.":" Roles are set by an admin.")
-  : "Rates are set by a PM or admin. You can add men, move them between crews, change numbers and mark them inactive.";
+  : (ME&&ME.role==="safety" ? "Add new hires here: name, number, classification, crew and who they report to. Roles, rates and removals are handled by the office."
+    : "Rates are set by a PM or admin. You can add men, move them between crews, change numbers and mark them inactive.");
+  const safety = !!ME && ME.role==="safety";
+  $("crewPush").hidden = safety; $("crewPushTag").hidden = safety;
   if(ME && ME.role==="pm") $("crewHint").textContent += " As a PM you see the whole company list; use Under to narrow it to one super's or foreman's people.";
-  const all = ((rol || (ME&&ME.role==="pm")) ? db.employees : crewOnly()).filter(e=>canSeeEmp(e.id));
-  if(!seesAll() && !$("cBoss").value) $("cBoss").value = ME.id;
+  const all = ((rol || (ME&&(ME.role==="pm"||ME.role==="safety"))) ? db.employees : crewOnly()).filter(e=>canSeeEmp(e.id));
+  if(!seesAll() && !safety && !$("cBoss").value) $("cBoss").value = ME.id;
   if(!keepFilters){
     fillSelect($("cfRole"), [["","All roles"]].concat(abc(ROLES).map(r=>[r,r])), CF.role);
     fillSelect($("cfUnder"), [["","Anyone"]].concat(db.employees.filter(e=>canLead(e)&&(canSeeEmp(e.id)||e.id===(ME&&ME.id))).sort((a,b)=>a.name.localeCompare(b.name)).map(e=>[e.id,e.name+" ("+e.role+")"])), CF.under);
@@ -1881,7 +2031,7 @@ function renderCrew(keepFilters){
                '<td class="n num">'+money((e.rate||0)*db.settings.otMult)+"</td>"+
                '<td class="n num">'+money((e.rate||0)*db.settings.dtMult)+"</td>" : "")+
         '<td><input type="checkbox" data-e="'+e.id+'" data-p="active"'+(e.active!==false?" checked":"")+"></td>"+
-        '<td><button class="x" data-edel="'+e.id+'">&times;</button></td></tr>').join("")+"</tbody></table>"+
+        '<td>'+(safety?"":'<button class="x" data-edel="'+e.id+'">&times;</button>')+"</td></tr>").join("")+"</tbody></table>"+
       '<p class="hint"><strong>Reports to</strong> builds the chain: workers to their foreman, foremen to a superintendent, superintendents to a PM. Reports can then be pulled for everyone under any one of them. A crew number opens the clock. A super, PM or admin number opens the office at that level. Someone marked inactive keeps their name on old sheets but their number stops working.</p>';
   $("crewTable").querySelectorAll("[data-e]").forEach(el=>{
     const e = emp(el.dataset.e), p = el.dataset.p;
@@ -1908,14 +2058,22 @@ $("pAdd").onclick = ()=>{
   const n=$("pName").value.trim(); if(!n) return $("pName").focus();
   db.pms.push({id:uid(), name:n}); $("pName").value=""; save(); renderJobs();
 };
+$("jProj").onchange = async ()=>{ const v = await pickProj($("jProj"), ""); if(v && ![...$("jProj").options].some(o=>o.value===v)){ const o=document.createElement("option"); o.value=o.textContent=v; $("jProj").insertBefore(o, $("jProj").lastElementChild); } $("jProj").value = v; };
 $("jAdd").onclick = ()=>{
-  const po=$("jPo").value.trim(), nm=$("jName").value.trim(), p=$("jPm").value;
+  const po=$("jPo").value.trim(), nm=$("jName").value.trim(), p=$("jPm").value, pj=$("jProj").value==="__new"?"":$("jProj").value.trim();
   if(!po) return $("jPo").focus();
   if(!p) return tell("Add a project manager first, then assign this job to one.");
   if(db.jobs.some(j=>j.po.toLowerCase()===po.toLowerCase())) return tell("Job "+po+" is already on the list.");
-  db.jobs.push({id:uid(), po, name:nm, desc:$("jDesc").value.trim(), foremen:[], pmId:p, active:true, oh:null, profit:null, rates:{}, markupOff:false, superId:$("jSuper").value||(ME&&ME.role==="super"?ME.id:"")});
+  db.jobs.push({id:uid(), po, name:nm, desc:$("jDesc").value.trim(), proj:pj, foremen:[], pmId:p, active:true, oh:null, profit:null, rates:{}, markupOff:false, superId:$("jSuper").value||(ME&&ME.role==="super"?ME.id:"")});
   $("jPo").value=$("jName").value=$("jDesc").value=""; save(); renderJobs();
 };
+/* job cards under their folder headings; jobs in no folder last */
+function jobCardsHTML(card){
+  const vj = visJobs(), fl = projList(vj), loose = vj.filter(j=>!jobProj(j));
+  const head = (name, n) => '<h3 class="jfold">'+esc(name)+'<span class="mini">'+n+' job'+(n===1?"":"s")+"</span></h3>";
+  return fl.map(f=>{ const js=projOf(f,vj); return head(f, js.length)+js.map(card).join(""); }).join("")+
+    (loose.length ? (fl.length?head("No folder", loose.length):"")+loose.map(card).join("") : "");
+}
 function renderJobs(){
   const mk = canMarkup();
   const supers = db.employees.filter(e=>e.role==="super" && e.active!==false);
@@ -1926,6 +2084,7 @@ function renderJobs(){
   const keepPm = $("jPm").value;
   $("jPm").innerHTML = ['<option value="">Pick a PM</option>'].concat(db.pms.map(p=>'<option value="'+p.id+'">'+esc(p.name)+"</option>")).join("");
   if(db.pms.some(p=>p.id===keepPm)) $("jPm").value = keepPm;
+  const keepPj = $("jProj").value; $("jProj").innerHTML = projSelHTML("", keepPj); if([...$("jProj").options].some(o=>o.value===keepPj)) $("jProj").value = keepPj;
   $("pmTable").innerHTML = !db.pms.length
     ? '<div class="empty">No project managers yet.</div>'
   : '<table><thead><tr><th>Project manager</th><th>Signs in as</th>'+(mk?'<th class="n">Overhead %</th><th class="n">Profit %</th>':"")+'<th class="n">Jobs</th><th></th></tr></thead><tbody>'+
@@ -1944,17 +2103,22 @@ function renderJobs(){
   $("jobTable").innerHTML = !db.jobs.length
     ? '<div class="empty">No jobs yet. Each job you add becomes its own weekly block on its PM\'s sheet.</div>'
   : '<div class="jcards">'+
-      visJobs().map(j=>'<div class="jcard'+(j.active===false?" off":"")+'"><div class="jrow">'+
+      jobCardsHTML(j=>'<div class="jcard'+(j.active===false?" off":"")+'"><div class="jrow">'+
         '<label class="f jpo">Job No.<input type="text" data-j="'+j.id+'" data-p="po" value="'+esc(j.po)+'"></label>'+
         '<label class="f jname">Job name<input type="text" data-j="'+j.id+'" data-p="name" value="'+esc(j.name)+'"></label>'+
         '<label class="f jdesc">Description (what the crew sees)<input type="text" data-j="'+j.id+'" data-p="desc" value="'+esc(j.desc||"")+'" placeholder="'+esc(j.name||"")+'"></label>'+
         '<label class="f jsel">PM<select data-j="'+j.id+'" data-p="pmId"'+(ME&&ME.role==="super"?" disabled":"")+'>'+db.pms.map(p=>'<option value="'+p.id+'"'+(p.id===j.pmId?" selected":"")+">"+esc(p.name)+"</option>").join("")+"</select></label>"+
         '<label class="f jsel">Superintendent<select data-j="'+j.id+'" data-p="superId"'+(ME&&ME.role==="super"?" disabled":"")+'>'+supOpts(j.superId)+"</select></label>"+
+        '<label class="f jsel">Project folder<select data-jproj="'+j.id+'">'+projSelHTML("", jobProj(j))+"</select></label>"+
         '<label class="jact"><input type="checkbox" data-j="'+j.id+'" data-p="active"'+(j.active!==false?" checked":"")+"> Active</label>"+
         '<button class="x jdel" data-jdel="'+j.id+'" title="Remove this job">&times;</button></div>'+
         (mk?'<div class="jrow jmk">'+["oh","profit"].map(k=>'<label class="f jnum">'+(k==="oh"?"Overhead %":"Profit %")+'<input class="h num" type="number" step="0.5" min="0" data-j="'+j.id+'" data-p="'+k+'" value="'+(hasNum(j[k])?j[k]:"")+'" placeholder="'+mkPart(Object.assign({},j,{[k]:null}),k).v+'"'+(j.markupOff?" disabled":"")+'></label>').join("")+
              '<label class="jact"><input type="checkbox" data-j="'+j.id+'" data-p="markupOff"'+(j.markupOff?" checked":"")+"> No markup</label>"+
              '<button class="b ghost sm" data-jrates="'+j.id+'">PO rates: '+(Object.keys(j.rates||{}).length?Object.keys(j.rates).length+" custom":"defaults")+"</button></div>":"")+
+        '<div class="jrow jtime"><label class="f jsel">Work week<select data-j="'+j.id+'" data-p="sched"><option value="">Default: '+(db.settings.sched==="4x10"?"4 × 10s":"5 × 8s")+'</option><option value="5x8"'+(j.sched==="5x8"?" selected":"")+'>5 × 8s (Mon–Fri)</option><option value="4x10"'+(j.sched==="4x10"?" selected":"")+'>4 × 10s (Mon–Thu)</option></select></label>'+
+          '<label class="f jnum" style="flex-basis:130px">Start time<input type="time" data-j="'+j.id+'" data-p="start" value="'+esc(j.start||"")+'" placeholder="'+esc(db.settings.startTime||"07:00")+'"></label>'+
+          '<label class="f jsel">Night shift<select data-j="'+j.id+'" data-p="nightShift"><option value="">Company default</option><option value="swing"'+(j.nightShift==="swing"?" selected":"")+'>Swing (+'+(+db.settings.swingPct||0)+'%)</option><option value="grave"'+(j.nightShift==="grave"?" selected":"")+'>Graveyard (+'+(+db.settings.gravePct||0)+'%)</option><option value="none"'+(j.nightShift==="none"?" selected":"")+'>No premium</option></select></label>'+
+          '<span class="mini" style="padding-bottom:10px">Quits at '+(function(){ const st=T.atHM("2026-01-05", jobStart(j)); if(!st) return "?"; const q=new Date(new Date(st).getTime()+((jobSched(j)==="4x10"?10:8)+(+db.settings.mealMin||0)/60)*3600000); return T.clock(q.toISOString()); })()+' · OT until '+(function(){ const st=T.atHM("2026-01-05", jobStart(j)); if(!st) return "?"; const ten=jobSched(j)==="4x10"; const q=new Date(new Date(st).getTime()+((ten?10:8)+(ten?2:4)+(+db.settings.mealMin||0)/60)*3600000); return T.clock(q.toISOString()); })()+', then double time</span></div>'+
         '<div class="jrow jsite"><label class="f jloc">Job site location (lat, long)<input type="text" data-jsite="'+j.id+'" value="'+(j.site?j.site.lat+", "+j.site.lon:"")+'" placeholder="Paste from Google Maps, or use this device"></label>'+
           '<label class="f jnum">Radius (ft)<input class="num" type="number" min="100" step="100" data-j="'+j.id+'" data-p="siteFt" value="'+(hasNum(j.siteFt)?j.siteFt:"")+'" placeholder="'+(+db.settings.geoFt||1000)+'"></label>'+
           '<button class="b ghost sm" data-jhere="'+j.id+'">Use this device\'s location</button>'+
@@ -1962,19 +2126,21 @@ function renderJobs(){
         '<div class="jfm"><span class="jfl">Foremen'+((j.foremen||[]).length?" ("+(j.foremen||[]).length+")":"")+'</span>'+
           jobForemen(j).map(f=>'<span class="chip">'+esc(f.name)+'<button class="x" data-jfdel="'+j.id+'|'+f.id+'" title="Take off this job">&times;</button></span>').join("")+
           '<select data-jfadd="'+j.id+'"><option value="">+ Add foreman</option>'+foremenAll.filter(f=>!(j.foremen||[]).includes(f.id)).map(f=>'<option value="'+f.id+'">'+esc(f.name)+(f.crew?" ("+esc(shiftName(f.crew))+")":"")+"</option>").join("")+"</select></div>"+
-        "</div>").join("")+"</div>"+
+        "</div>")+"</div>"+
       (mk?'<p class="hint">Leave a job\'s overhead or profit blank to use its PM\'s figure, or the general one if the PM has none. The grey number is what it will use. Tick <strong>off</strong> to bill a PO with no markup at all. <strong>PO rates</strong> opens that job\'s classification rate schedule.</p>':"")+
       '<div id="jobRates"></div>'+
-      '<p class="hint">The superintendent on a job is who sees its time sheets. On the keypad the crew never sees the job number: they see the <strong>description</strong> (or the job name if it is blank) and its foreman. Assign <strong>foremen</strong> and each man only sees the jobs his foreman is on; a job with no foremen shows up for everyone under its superintendent.</p>';
+      '<p class="hint">The superintendent on a job is who sees its time sheets. On the keypad the crew never sees the job number: they see the <strong>description</strong> (or the job name if it is blank) and its foreman. Assign <strong>foremen</strong> and each man only sees the jobs his foreman is on; a job with no foremen shows up for everyone under its superintendent. <strong>Project folders</strong> (DNN4, DNN5…) group the POs: the keypad shows a man his folders as tabs and remembers the one he used last, and Reports and Export can take a whole folder at once.</p>';
   $("jobTable").querySelectorAll("[data-j]").forEach(el=>{
     const j = job(el.dataset.j), p = el.dataset.p;
     el.onchange = ev => {
+      if(p==="sched"||p==="start"||p==="nightShift"){ j[p] = ev.target.value; if(p==="start" && j.start && !/^\d{2}:\d{2}$/.test(j.start)) j.start=""; save(); renderJobs(); return; }
       if(p==="oh"||p==="profit") j[p] = ev.target.value==="" ? null : (+ev.target.value||0);
       else if(p==="markupOff"){ j.markupOff = ev.target.checked; save(); renderJobs(); return; }
       else j[p] = p==="active" ? ev.target.checked : ev.target.value;
       save();
     };
   });
+  $("jobTable").querySelectorAll("[data-jproj]").forEach(el=>el.onchange=async ()=>{ const j=job(el.dataset.jproj); const v=await pickProj(el, jobProj(j)); if(v===jobProj(j)){ renderJobs(); return; } j.proj=v; save(); renderJobs(); });
   $("jobTable").querySelectorAll("[data-jsite]").forEach(el=>el.onchange=ev=>{
     const j=job(el.dataset.jsite), s=parseSite(ev.target.value);
     if(s===undefined){ tell("Couldn't read that location. Paste it like 34.7698, -84.9702, or a Google Maps link."); ev.target.value = j.site?j.site.lat+", "+j.site.lon:""; return; }
@@ -2147,7 +2313,7 @@ function renderReports(){
   fillSelect($("rMonth"), months.map(m=>[m, MONTHNAME[+m.slice(5)-1]+" "+m.slice(0,4)]).reverse(), $("rMonth").value);
   fillSelect($("rQtr"), qs.map(q=>[q,q.replace("-"," ")]).reverse(), $("rQtr").value);
   fillSelect($("rPm"), [["","All project managers"]].concat(db.pms.map(p=>[p.id,p.name])), $("rPm").value);
-  fillSelect($("rJob"), [["","All jobs"]].concat(visJobs().map(j=>[j.id,j.po+" · "+j.name])), $("rJob").value);
+  fillJobSelect($("rJob"), visJobs(), "All jobs", $("rJob").value, true);
   fillSelect($("rUnder"), [["","Everyone"]].concat(visPeople().filter(canLead).sort((a,b)=>a.name.localeCompare(b.name)).map(e=>[e.id,e.name+" ("+e.role+")"])), $("rUnder").value);
   const pickable = visPeople().filter(e=>crewOnly().some(c=>c.id===e.id)).sort((a,b)=>a.name.localeCompare(b.name));
   $("rEmpList").innerHTML = pickable.map(e=>'<option value="'+esc(empLabel(e))+'"></option>').join("");
@@ -2170,7 +2336,7 @@ function renderReports(){
   if(sh) list = list.filter(r=>r.shift===sh);
   if(sh) title += " · "+shiftName(sh)+" shift";
   if(rp){ list = list.filter(r=>r.pm.id===rp); title += " · "+(pm(rp)||{}).name; }
-  if(rj){ list = list.filter(r=>r.job.id===rj); title += " · "+(job(rj)||{}).po; }
+  if(rj){ list = list.filter(r=>jobMatch(r.job, rj)); title += " · "+jobFilterLabel(rj); }
   if(ru){ list = underList(list, ru); title += " · under "+(emp(ru)||{}).name; }
   if(re){ list = onlyList(list, new Set([re.id])); title = re.name+" #"+(re.pin||"")+" · "+title; }
   REPORT = {list, title, empId: re ? re.id : null};
@@ -2201,8 +2367,12 @@ function renderReports(){
       gs.map(g=>{ const t=sumTotals(g.rows.map(r=>r.t)); const men=new Set(g.rows.map(r=>r.form.crew[0].empId)).size;
         return "<tr><td>"+esc(g.label)+'</td><td class="n num">'+men+"</td>"+[t.rt,t.ot,t.dt,t.hours].map(v=>'<td class="n num">'+hrs(v)+"</td>").join("")+md(t)+"</tr>"; }).join(""));
   });
+  if(list.some(r=>jobProj(r.job))) html += table("By project folder", [["Project"],["Jobs",1],["Day hrs",1],["Night hrs",1],["Hours",1]],
+    groups(r=>jobProj(r.job)||"~", r=>jobProj(r.job)||"No folder").map(g=>{ const t=sumTotals(g.rows.map(r=>r.t));
+      const dh=sumTotals(g.rows.filter(r=>r.shift==="day").map(r=>r.t)).hours, nj=new Set(g.rows.map(r=>r.job.id)).size;
+      return "<tr><td>"+esc(g.label)+'</td><td class="n num">'+nj+'</td><td class="n num">'+hrs(dh)+'</td><td class="n num">'+hrs(t.hours-dh)+'</td><td class="n num">'+hrs(t.hours)+"</td>"+md(t)+"</tr>"; }).join(""));
   html += table("By job", [["Job"],["PM"],["Day hrs",1],["Night hrs",1],["Hours",1]].concat($$?[["OH and profit",1]]:[]),
-    groups(r=>r.job.id, r=>r.job.po+" · "+r.job.name).map(g=>{ const t=sumTotals(g.rows.map(r=>r.t));
+    groups(r=>r.job.id, r=>(jobProj(r.job)?jobProj(r.job)+" · ":"")+r.job.po+" · "+r.job.name).map(g=>{ const t=sumTotals(g.rows.map(r=>r.t));
       const dh=sumTotals(g.rows.filter(r=>r.shift==="day").map(r=>r.t)).hours;
       return "<tr><td>"+esc(g.label)+"</td><td>"+esc(pm(g.rows[0].job.pmId).name)+'</td><td class="n num">'+hrs(dh)+'</td><td class="n num">'+hrs(t.hours-dh)+'</td><td class="n num">'+hrs(t.hours)+"</td>"+($$?'<td class="n num">'+markupLabel(g.rows[0].job)+"</td>":"")+md(t)+"</tr>"; }).join(""));
 
@@ -2210,7 +2380,7 @@ function renderReports(){
   const men = {};
   list.forEach(r=>r.form.crew.forEach(c=>{
     if(!c.empId) return; const e=emp(c.empId); if(!e) return;
-    const s=db.settings, rate=lineRate(e, r.job);
+    const s=db.settings, rate=lineRate(e, r.job, r.form.shift);
     const b = men[c.empId] = men[c.empId]||{name:e.name,crew:e.crew,cls:e.cls,rt:0,ot:0,dt:0,cost:0,days:new Set(),hi:0};
     b.hi = Math.max(b.hi, rate);
     b.rt+=+c.rt||0; b.ot+=+c.ot||0; b.dt+=+c.dt||0; b.days.add(r.date);
@@ -2264,7 +2434,7 @@ function empCard(e, list, $$){
   const fm = foremanOf(e.id), sup = bossOf(e.id,"super");
   const days = new Set(list.map(r=>r.date)).size;
   const rows = list.slice().sort((a,b)=>a.date.localeCompare(b.date)||a.job.po.localeCompare(b.job.po)).map(r=>{
-    const c = r.form.crew[0]; const rate = lineRate(e, r.job), s = db.settings;
+    const c = r.form.crew[0]; const rate = lineRate(e, r.job, r.form.shift), s = db.settings;
     const h = (+c.rt||0)+(+c.ot||0)+(+c.dt||0);
     const cost = (+c.rt||0)*rate+(+c.ot||0)*rate*s.otMult+(+c.dt||0)*rate*s.dtMult;
     return "<tr><td>"+D.us(r.date)+"</td><td>"+DAYNAME[r.dow].slice(0,3)+"</td><td>"+esc(r.job.po)+' <span class="mini">'+esc(r.job.name)+"</span></td><td>"+shiftName(r.shift)+"</td>"+
@@ -2311,7 +2481,7 @@ function reportBook(list, title){
   const grp = (rows, keyFn, labelFn) => { const g={}; rows.forEach(r=>{ const k=keyFn(r); (g[k]=g[k]||{label:labelFn(r),rows:[]}).rows.push(r); }); return Object.values(g).sort((a,b)=>a.label.localeCompare(b.label)); };
   const manRows = rows => {
     const men={};
-    rows.forEach(r=>r.form.crew.forEach(c=>{ if(!c.empId) return; const e=emp(c.empId); if(!e) return; const rate=lineRate(e, r.job);
+    rows.forEach(r=>r.form.crew.forEach(c=>{ if(!c.empId) return; const e=emp(c.empId); if(!e) return; const rate=lineRate(e, r.job, r.form.shift);
       const b=men[c.empId]=men[c.empId]||{name:e.name,crew:e.crew,rate,rt:0,ot:0,dt:0,cost:0,days:new Set()};
       b.rate = Math.max(b.rate, rate);
       b.rt+=+c.rt||0; b.ot+=+c.ot||0; b.dt+=+c.dt||0; b.days.add(r.date);
@@ -2326,7 +2496,7 @@ function reportBook(list, title){
   const dayTable = rows => {
     const out=[[B("Date"),B("Day"),B("Job"),B("Shift"),B("Employee")].concat(hcols.map(B)).concat($$?[B("Rate"),B("Labor cost")]:[]).concat([B("Work description")])];
     rows.slice().sort((a,b)=>a.date.localeCompare(b.date)||a.job.po.localeCompare(b.job.po)).forEach(r=>{
-      r.form.crew.forEach(c=>{ if(!c.empId) return; const e=emp(c.empId); if(!e) return; const rate=lineRate(e, r.job);
+      r.form.crew.forEach(c=>{ if(!c.empId) return; const e=emp(c.empId); if(!e) return; const rate=lineRate(e, r.job, r.form.shift);
         const cost=(+c.rt||0)*rate+(+c.ot||0)*rate*s.otMult+(+c.dt||0)*rate*s.dtMult;
         out.push([D.us(r.date),DAYNAME[r.dow].slice(0,3),r.job.po,shiftName(r.shift),e.name,+c.rt||0,+c.ot||0,+c.dt||0,(+c.rt||0)+(+c.ot||0)+(+c.dt||0)].concat($$?[rate,cost]:[]).concat([r.form.desc||""])); });
       if($$ && r.form.materials.some(m=>+m.qty)) r.form.materials.filter(m=>+m.qty).forEach(m=>
@@ -2342,7 +2512,8 @@ function reportBook(list, title){
   const sum=[[B("ADMAN ELECTRIC, INC.: Field time report")],[B(title)],[],[B("Totals")].concat(hcols.map(B)).concat(mcols.map(B)),[""].concat(tvals(grand)),[]];
   const block=(name,groups)=>{ sum.push([B(name)].concat(hcols.map(B)).concat(mcols.map(B))); groups.forEach(g=>sum.push([g.label].concat(tvals(sumTotals(g.rows.map(r=>r.t)))))); sum.push([]); };
   block("By project manager", grp(list,r=>r.pm.id,r=>r.pm.name));
-  block("By job", grp(list,r=>r.job.id,r=>r.job.po+" · "+r.job.name+($$?"  (OH and profit "+markupLabel(r.job)+")":"")));
+  if(list.some(r=>jobProj(r.job))) block("By project folder", grp(list,r=>jobProj(r.job)||"~",r=>jobProj(r.job)||"No folder"));
+  block("By job", grp(list,r=>r.job.id,r=>(jobProj(r.job)?jobProj(r.job)+" · ":"")+r.job.po+" · "+r.job.name+($$?"  (OH and profit "+markupLabel(r.job)+")":"")));
   block("By shift", grp(list,r=>r.shift,r=>shiftName(r.shift)));
   [["By foreman (labor only)","foreman"],["By superintendent (labor only)","super"],["By project manager, reporting chain (labor only)","pm"]].forEach(([ttl,role])=>{ const gs=chainGroups(list,role); if(gs.length) block(ttl, gs); });
   block("By week", grp(list,r=>r.we,r=>"Week ending "+D.us(r.we)));
@@ -2440,6 +2611,13 @@ function renderSettings(){
     : (crewOnly().some(e=>!e.pin)
           ? '<div class="flag warn">Some employees have no number yet: they will not be able to punch in.</div>' : "");
   });
+  step("contract", ()=>{
+    const s = db.settings;
+    $("setSched").value = s.sched||"5x8"; $("setStart").value = s.startTime||"07:00";
+    $("setAuto").value = s.autoSplit===false ? "0" : "1"; $("setEarly").value = s.earlyAs||"dt";
+    $("setNight").value = s.nightShift||"swing"; $("setSwing").value = hasNum(s.swingPct)?s.swingPct:17.3; $("setGrave").value = hasNum(s.gravePct)?s.gravePct:31.4;
+    renderHolidays();
+  });
   step("sync", ()=>{
     const c = sbCfg();
     $("sbUrl").value = c.url; $("sbKey").value = c.key; $("sbSchema").value = c.schema;
@@ -2505,6 +2683,49 @@ $("roundTo").onchange = e=>{ db.settings.roundTo = +e.target.value; save(); };
 $("mealMin").onchange = e=>{ db.settings.mealMin = +e.target.value; save(); };
 $("geoMode").onchange = e=>{ db.settings.geoMode = e.target.value; save(); };
 $("geoFt").onchange = e=>{ db.settings.geoFt = +e.target.value; save(); };
+$("setSched").onchange = e=>{ db.settings.sched = e.target.value; save(); };
+$("setStart").onchange = e=>{ if(/^\d{2}:\d{2}$/.test(e.target.value)){ db.settings.startTime = e.target.value; save(); } };
+$("setAuto").onchange  = e=>{ db.settings.autoSplit = e.target.value==="1"; save(); };
+$("setEarly").onchange = e=>{ db.settings.earlyAs = e.target.value; save(); };
+$("setNight").onchange = e=>{ db.settings.nightShift = e.target.value; save(); };
+$("setSwing").onchange = e=>{ db.settings.swingPct = +e.target.value||0; save(); };
+$("setGrave").onchange = e=>{ db.settings.gravePct = +e.target.value||0; save(); };
+function renderHolidays(){
+  const host = $("holList"); if(!host) return;
+  const y = new Date().getFullYear();
+  const off = new Set(db.settings.holidaysOff||[]);
+  const rows = [];
+  [y, y+1].forEach(yy=>holidaysFor(yy).forEach(h=>rows.push(Object.assign({yy}, h))));
+  (db.settings.holidaysExtra||[]).forEach(h=>rows.push({name:h.name||"Holiday", date:h.date, observed:h.date, extra:true}));
+  rows.sort((a,b)=>a.observed.localeCompare(b.observed));
+  host.innerHTML = '<table><thead><tr><th>Pay as holiday</th><th>Holiday</th><th>Falls on</th><th>Kept on</th><th></th></tr></thead><tbody>'+
+    rows.map(h=>'<tr><td><input type="checkbox" data-hol="'+h.observed+'"'+(h.extra||!off.has(h.observed)?" checked":"")+(h.extra?" disabled":"")+'></td><td>'+esc(h.name)+'</td><td>'+D.us(h.date)+'</td><td>'+(h.observed!==h.date?'<strong>'+D.us(h.observed)+'</strong>':D.us(h.observed))+'</td><td>'+(h.extra?'<button class="x" data-holdel="'+h.date+'">&times;</button>':'')+'</td></tr>').join("")+"</tbody></table>";
+  host.querySelectorAll("[data-hol]").forEach(el=>el.onchange=ev=>{ const d=el.dataset.hol; const set=new Set(db.settings.holidaysOff||[]); if(ev.target.checked) set.delete(d); else set.add(d); db.settings.holidaysOff=[...set]; save(); renderHolidays(); });
+  host.querySelectorAll("[data-holdel]").forEach(el=>el.onclick=()=>{ db.settings.holidaysExtra=(db.settings.holidaysExtra||[]).filter(h=>h.date!==el.dataset.holdel); save(); renderHolidays(); });
+}
+$("holAdd").onclick = ()=>{
+  const d=$("holDate").value, n=$("holName").value.trim();
+  if(!D.ok(d)) return tell("Pick the date first.");
+  db.settings.holidaysExtra = (db.settings.holidaysExtra||[]).filter(h=>h.date!==d).concat([{date:d, name:n||"Holiday"}]);
+  $("holDate").value=""; $("holName").value=""; save(); renderHolidays();
+};
+$("otApply").onclick = async ()=>{
+  const from = D.add(D.weekEnd(D.iso(new Date())),-6);
+  const ps = db.punches.filter(p=>p.tout && p.date>=from && p.jobId);
+  if(!ps.length) return tell("No finished punches this week yet.");
+  const moved = ps.filter(p=>{ let l=null; Object.keys(db.days).forEach(d=>dayRec(d).forms.forEach(f=>{ const c=f.crew.find(c=>c.punchId===p.id); if(c) l=c; })); return l && l._e; }).length;
+  const all = moved ? await ask("Re-figure "+ps.length+" punches since "+D.us(from)+" by the schedule rules?\n\n"+moved+" of them were moved by hand on the dailies. OK re-figures everything; Cancel keeps the hand-moved ones as they are and re-figures the rest.") : await ask("Re-figure "+ps.length+" punches since "+D.us(from)+" by the schedule rules?");
+  snapshot(true, "before re-figuring RT/OT/DT");
+  let n=0;
+  ps.forEach(p=>{
+    let line=null; Object.keys(db.days).forEach(d=>dayRec(d).forms.forEach(f=>{ const c=f.crew.find(c=>c.punchId===p.id); if(c) line=c; }));
+    if(line && line._e && !all) return;
+    const s = lineSplit(p);
+    if(!line){ post(p); n++; return; }
+    line.rt=s.rt; line.ot=s.ot||""; line.dt=s.dt||""; delete line._e; n++;
+  });
+  save(); renderDaily(); tell("Done. "+n+" punch"+(n===1?"":"es")+" re-figured.");
+};
 $("mealAfter").onchange = e=>{ db.settings.mealAfter = +e.target.value; save(); };
 /* the setting applies to punches from now on; this re-figures the current week's closed punches too */
 $("mealApply").onclick = async ()=>{
@@ -2519,6 +2740,7 @@ $("mealApply").onclick = async ()=>{
     let line=null;
     Object.keys(db.days).forEach(d=>dayRec(d).forms.forEach(f=>{ const l=f.crew.find(c=>c.punchId===p.id); if(l) line=l; }));
     if(!line){ post(p); return; }
+    if(!line._e){ const s=lineSplit(p); line.rt=s.rt; line.ot=s.ot||""; line.dt=s.dt||""; return; }
     const moved = (+line.ot||0)+(+line.dt||0);
     line.rt = Math.max(0, Math.round((p.hours-moved)*100)/100); line._e = stampNow();
   });
@@ -2628,7 +2850,7 @@ function fillScopeOptions(){
   fillSelect($("xMonth"), months.length?months.map(m=>[m,MONTHNAME[+m.slice(5)-1]+" "+m.slice(0,4)]).reverse():[["","No time entered"]], $("xMonth").value);
   fillSelect($("xQtr"), qs.length?qs.map(q=>[q,q.replace("-"," ")]).reverse():[["","No time entered"]], $("xQtr").value);
   fillSelect($("xPm"), [["","All project managers"]].concat(db.pms.map(p=>[p.id,p.name])), $("xPm").value);
-  fillSelect($("xPo"), [["","All jobs"]].concat(visJobs().map(j=>[j.id,j.po+" · "+j.name])), $("xPo").value);
+  fillJobSelect($("xPo"), visJobs(), "All jobs", $("xPo").value, true);
   const worked = Object.keys(db.days).filter(d=>dayRec(d).forms.length).sort();
   if(!$("xDay").value)  $("xDay").value  = worked.length?worked[worked.length-1]:D.iso(new Date());
   if(!$("xFrom").value) $("xFrom").value = worked.length?worked[0]:D.iso(new Date());
@@ -2669,11 +2891,11 @@ function scoped(){
   const pmId=$("xPm").value, poId=$("xPo").value, sh=$("xShift").value;
   let recs = collect(d => d>=s.from && d<=s.to);
   if(pmId) recs = recs.filter(r=>r.pm.id===pmId);
-  if(poId) recs = recs.filter(r=>r.job.id===poId);
+  if(poId) recs = recs.filter(r=>jobMatch(r.job, poId));
   if(sh)   recs = recs.filter(r=>r.shift===sh);
   let label = s.label;
   if(pmId) label += " · "+(pm(pmId)||{}).name;
-  if(poId) label += " · "+(job(poId)||{}).po;
+  if(poId) label += " · "+jobFilterLabel(poId);
   if(sh)   label += " · "+shiftName(sh);
   return {s, recs, label};
 }
@@ -2891,7 +3113,7 @@ const sameTime = (a,b) => !!a && !!b && new Date(a).getTime() === new Date(b).ge
        since it last looked (mergeDay), instead of replacing it. */
 const noLineIds = () => new Set(db.punches.filter(p=>p && p.noLine).map(p=>p.id));
 function lineKey(c){ return c.punchId ? "p:"+c.punchId : "h:"+(c.empId||""); }
-function freshLine(c){ const p = c.punchId && db.punches.find(x=>x.id===c.punchId); return !!p && String(c.ot||"")==="" && String(c.dt||"")==="" && +c.rt===+p.hours; }
+function freshLine(c){ const p = c.punchId && db.punches.find(x=>x.id===c.punchId); if(!p) return false; const s = lineSplit(p); return +c.rt===+s.rt && (+c.ot||0)===(+s.ot||0) && (+c.dt||0)===(+s.dt||0); }
 const ts = v => v ? new Date(v).getTime() : 0;
 const copy = o => JSON.parse(JSON.stringify(o));
 const matKey = m => m.id ? "i:"+m.id : "c:"+(m.qty||"")+"|"+(m.desc||"")+"|"+(m.unit||"");
@@ -3447,7 +3669,7 @@ function drawK(){
     const j = op ? job(op.jobId) : null;
     c.innerHTML = '<h3>'+esc(e.name)+' <span class="mini">'+(e.crew?shiftName(e.crew)+" crew":"")+"</span></h3><div class=\"k-body\">"+
       (op
-        ? '<div class="onclock"><strong>On the clock</strong><br>'+esc(crewJobTitle(j))+
+        ? '<div class="onclock"><strong>On the clock</strong><br>'+esc((jobProj(j)?jobProj(j)+" · ":"")+crewJobTitle(j))+
           "<br>Since "+(op.date===T.dateOf(T.now())?"":D.us(op.date)+" ")+T.clock(op.tin)+"</div>"+
           '<button class="b red big" data-k="out">Clock out</button>'
       : '<button class="b big" data-k="jobs">Clock in on a job</button>')+
@@ -3457,11 +3679,16 @@ function drawK(){
       '<button class="b ghost big" data-k="done">Done</button></div>';
   }
   else if(K.screen==="jobs"){
-    const list = jobsFor(K.empId);
-    c.innerHTML = '<h3>Pick your job</h3><div class="k-body">'+
-      (list.length ? list.map(j=>{ const me=emp(K.empId), myF=me&&(me.role==="foreman"?me:bossOf(me.id,"foreman")); let f=jobForemen(j); if(myF && f.some(x=>x.id===myF.id)) f=[myF]; return '<button class="jobbtn" data-j="'+j.id+'">'+esc(crewJobTitle(j))+
-        (f.length?"<small>Foreman: "+esc(f.map(x=>x.name).join(", "))+"</small>":"")+"</button>"; }).join("")
-      : '<div class="empty">No jobs for you yet. See your foreman.</div>')+
+    const all = jobsFor(K.empId), me=emp(K.empId), myF=me&&(me.role==="foreman"?me:bossOf(me.id,"foreman"));
+    const fl = projList(all), loose = all.filter(j=>!jobProj(j));
+    const tabs = fl.concat(fl.length && loose.length ? ["*"] : []);          // "*": jobs in no folder
+    if(tabs.length && !tabs.includes(K.proj)) K.proj = lastProj(K.empId, tabs) || tabs[0];
+    const list = (tabs.length ? (K.proj==="*" ? loose : projOf(K.proj, all)) : all).slice().sort((a,b)=>ABC(crewJobTitle(a),crewJobTitle(b)));
+    const btn = j => { let f=jobForemen(j); if(myF && f.some(x=>x.id===myF.id)) f=[myF]; return '<button class="jobbtn" data-j="'+j.id+'">'+esc(crewJobTitle(j))+
+        (f.length?"<small>Foreman: "+esc(f.map(x=>x.name).join(", "))+"</small>":"")+"</button>"; };
+    c.innerHTML = '<h3>'+(tabs.length>1 ? "Pick your project, then your job" : fl.length===1 ? esc(fl[0])+": pick your job" : "Pick your job")+'</h3><div class="k-body">'+
+      (tabs.length>1 ? '<div class="ktabs">'+tabs.map(t=>'<button data-fold="'+esc(t)+'" class="'+(t===K.proj?"on":"")+'">'+(t==="*"?"Other jobs":esc(t))+"<small>"+(t==="*"?loose:projOf(t,all)).length+" job"+((t==="*"?loose:projOf(t,all)).length===1?"":"s")+"</small></button>").join("")+"</div>" : "")+
+      (list.length ? list.map(btn).join("") : '<div class="empty">No jobs for you yet. See your foreman.</div>')+
       '<button class="b ghost big" data-k="back">Back</button></div>';
   }
   else if(K.screen==="off"){
@@ -3536,7 +3763,7 @@ function wireK(){
           else { K.empId=e.id; K.pin=""; K.msg=""; K.screen="menu"; drawK(); const who=e.id; freshPunches(who).then(()=>{ if(K.empId===who && K.screen==="menu") drawK(); }); }
           break;
         }
-        case "jobs": K.screen="jobs"; drawK(); break;
+        case "jobs": K.screen="jobs"; K.proj=null; drawK(); break;
         case "office": { const e=emp(K.empId); K.pin=""; K.msg=""; enterOffice(e); break; }
         case "back": K.screen="menu"; drawK(); break;
         case "home": K.screen="pin"; K.empId=null; K.pin=""; K.msg=""; drawK(); break;
@@ -3569,6 +3796,7 @@ function wireK(){
       }
     };
   });
+  card.querySelectorAll("[data-fold]").forEach(el=>el.onclick=()=>{ K.proj = el.dataset.fold; kIdle(); drawK(); });
   card.querySelectorAll("[data-j]").forEach(el=>el.onclick=async ()=>{
     const j = job(el.dataset.j), mode = geoMode();
     const fenced = mode==="block" && j && j.site;
@@ -3617,7 +3845,9 @@ document.addEventListener("keydown", e=>{
 });
 
 /* ================================================================ DIGITAL TIMESHEET (office) */
-let tcDate = D.iso(new Date());
+let tcDate = D.iso(new Date()), tcProj = "";
+const TC = {hold:false};                                      // a time field is mid-edit: don't redraw under it
+$("tcProj").onchange = ev=>{ tcProj = ev.target.value; renderClock(); };
 $("tcDate").value = tcDate;
 $("tcDate").onchange = e=>{
   const v=e.target.value;
@@ -3636,30 +3866,35 @@ $("tcAdd").onclick  = ()=>{
   p.hours=punchHours(p); db.punches.push(p); post(p); save(); renderClock();
 };
 function renderClock(){
+  TC.hold = false;
   const $$ = money$();
-  const list = db.punches.filter(p=>p.date===tcDate && (canSeeJob(p.jobId) || canSeeEmp(p.empId)))
+  const tcFl = projList(visJobs());
+  $("tcProjWrap").hidden = !tcFl.length; if(tcProj && !tcFl.includes(tcProj.slice(5))) tcProj = "";
+  fillSelect($("tcProj"), [["","All projects"]].concat(tcFl.map(f=>["proj:"+f, f])), tcProj);
+  const inProj = p => !tcProj || jobMatch(job(p.jobId), tcProj);
+  const list = db.punches.filter(p=>p.date===tcDate && (canSeeJob(p.jobId) || canSeeEmp(p.empId)) && inProj(p))
     .sort((a,b)=>String(a.tin).localeCompare(String(b.tin)));
-  const open = db.punches.filter(p=>!p.tout && (canSeeJob(p.jobId) || canSeeEmp(p.empId)));
+  const open = db.punches.filter(p=>!p.tout && (canSeeJob(p.jobId) || canSeeEmp(p.empId)) && inProj(p));
   let html = "";
   const long = list.filter(p=>p.tout && (new Date(p.tout)-new Date(p.tin)) > 14*3600000);
   if(long.length) html += '<div class="flag">'+long.length+' punch'+(long.length===1?"":"es")+' over 14 hours (probably a missed clock-out): '+long.map(p=>esc((emp(p.empId)||{}).name||"?")+" "+hrs(p.hours)+" h").join(", ")+". Fix the Out time here.</div>";
-  if(open.length) html += '<div class="flag warn">On the clock right now: '+
-    open.map(p=>{
-      const e=emp(p.empId), j=job(p.jobId), ok=p.tin && !isNaN(new Date(p.tin));
-      return esc(e?e.name:"unknown man")+" ("+esc(j?j.po:"no job")+", since "+(ok?T.clock(p.tin):"unknown")+")";
-    }).join(", ")+"</div>";
+  const crewKey = id => { const e=emp(id); if(!e) return "~"; if(e.role==="foreman") return e.id; if(OFFICE.includes(e.role)) return "office"; const f=bossOf(id,"foreman"); return f ? f.id : "none"; };
+  const crewLabel = k => k==="office" ? "Supervision" : k==="none" ? "No foreman set" : k==="~" ? "Unknown" : ((emp(k)||{}).name||"?")+"'s crew";
+  if(open.length) html += '<div class="flag warn">On the clock right now: <strong>'+open.length+'</strong> · '+
+    (open.length <= 15
+      ? open.map(p=>{ const e=emp(p.empId), j=job(p.jobId), ok=p.tin && !isNaN(new Date(p.tin)); return esc(e?e.name:"unknown man")+" ("+esc(j?j.po:"no job")+", since "+(ok?T.clock(p.tin):"unknown")+")"; }).join(", ")
+      : (()=>{ const c={}; open.forEach(p=>{ const k=crewKey(p.empId); c[k]=(c[k]||0)+1; }); return Object.keys(c).sort((a,b)=>ABC(crewLabel(a),crewLabel(b))).map(k=>esc(crewLabel(k))+" "+c[k]).join(" · "); })())+"</div>";
   const offSite = list.filter(p=>(p.geoIn&&(p.geoIn.ok===false))||(p.geoOut&&p.geoOut.ok===false));
   if(offSite.length) html += '<div class="flag">'+offSite.length+' punch'+(offSite.length===1?"":"es")+' on '+D.us(tcDate)+' happened off site or without GPS: '+
     offSite.map(p=>esc((emp(p.empId)||{}).name||"?")).join(", ")+". See the Location column.</div>";
-  html += !list.length
-    ? '<div class="empty">No punches on '+D.us(tcDate)+".</div>"
-  : '<table><thead><tr><th style="width:20%">Employee</th><th style="width:20%">Job</th><th>Shift</th><th style="width:100px">In</th><th style="width:100px">Out</th><th>Meal</th><th>Location</th><th class="n">Hours</th>'+($$?'<th class="n">Cost</th>':"")+'<th></th></tr></thead><tbody>'+
-      list.map(p=>{
-        const e=emp(p.empId), r=lineRate(e, job(p.jobId));
+  const grouped = localStorage.getItem("adman_field_tcgroup")!=="0";
+  const cols = 9+($$?1:0);
+  const rowOf = p=>{
+        const e=emp(p.empId), r=lineRate(e, job(p.jobId), p.shift);
         return '<tr><td><select data-pp="'+p.id+'" data-f="empId">'+
           crewOnly().filter(x=>canSeeEmp(x.id)||x.id===p.empId).sort(byName).map(x=>'<option value="'+x.id+'"'+(x.id===p.empId?" selected":"")+">"+esc(x.name)+"</option>").join("")+"</select></td>"+
           '<td><select data-pp="'+p.id+'" data-f="jobId">'+
-          db.jobs.filter(x=>canSeeJob(x.id)||x.id===p.jobId).sort((a,b)=>ABC(a.po,b.po)).map(x=>'<option value="'+x.id+'"'+(x.id===p.jobId?" selected":"")+">"+esc(x.po)+"</option>").join("")+"</select></td>"+
+          jobOptHTML(db.jobs.filter(x=>canSeeJob(x.id)||x.id===p.jobId), p.jobId, "", false, true)+"</select></td>"+
           '<td><select data-pp="'+p.id+'" data-f="shift"><option value="day"'+(p.shift!=="night"?" selected":"")+'>Day</option><option value="night"'+(p.shift==="night"?" selected":"")+'>Night</option></select></td>'+
           '<td><input type="time" data-pp="'+p.id+'" data-f="tin" value="'+T.hm(p.tin)+'"></td>'+
           '<td>'+(p.tout?'<input type="time" data-pp="'+p.id+'" data-f="tout" value="'+T.hm(p.tout)+'">':'<button class="b ghost sm" data-pclose="'+p.id+'">Clock out now</button>')+"</td>"+
@@ -3667,9 +3902,28 @@ function renderClock(){
           '<td style="white-space:nowrap">'+geoCell(p)+"</td>"+
           '<td class="n num">'+(p.tout?hrs(p.hours):"")+"</td>"+($$?'<td class="n num">'+(p.tout?money(p.hours*r):"")+"</td>":"")+
           '<td><button class="x" data-pdel="'+p.id+'">&times;</button></td></tr>';
-      }).join("")+"</tbody></table>"+
-      '<p class="hint">Every punch writes a Reg line on that day\'s job form for its shift. Change a time here and the daily sheet changes with it. Move hours to OT or DT on the Daily tab.</p>';
+      };
+  let body = "";
+  if(!grouped) body = list.map(rowOf).join("");
+  else {
+    const groups = {};
+    list.forEach(p=>{ const k=crewKey(p.empId); (groups[k]=groups[k]||[]).push(p); });
+    Object.keys(groups).sort((a,b)=>ABC(crewLabel(a),crewLabel(b))).forEach(k=>{
+      const ps = groups[k].slice().sort((a,b)=>ABC((emp(a.empId)||{}).name,(emp(b.empId)||{}).name) || String(a.tin).localeCompare(String(b.tin)));
+      const men = new Set(ps.map(p=>p.empId)).size, onClock = ps.filter(p=>!p.tout).length, h = ps.reduce((a,p)=>a+(p.tout?+p.hours||0:0),0);
+      const col = k!=="office"&&k!=="none"&&k!=="~" ? ((emp(k)||{}).color||"") : "";
+      body += '<tr class="grp"><td colspan="'+cols+'"'+(col?' style="border-left:6px solid #'+col+'"':'')+'>'+(col?'<span class="swatch" style="background:#'+col+'"></span>':'')+esc(crewLabel(k))+
+        ' <span class="mini">· '+men+' '+(men===1?'man':'men')+' · '+onClock+' on the clock · '+hrs(h)+' h'+(ps.length!==men?' · '+ps.length+' punches':'')+'</span></td></tr>' + ps.map(rowOf).join("");
+    });
+  }
+  html += '<div class="row" style="margin:4px 0 8px"><label class="mini"><input type="checkbox" id="tcGroup"'+(grouped?" checked":"")+'> Group by foreman, with counts</label><span class="spacer"></span><span class="mini">'+list.length+' punch'+(list.length===1?'':'es')+' · '+new Set(list.map(p=>p.empId)).size+' men · '+hrs(list.reduce((a,p)=>a+(p.tout?+p.hours||0:0),0))+' h</span></div>';
+  html += !list.length
+    ? '<div class="empty">No punches on '+D.us(tcDate)+(tcProj?" for "+esc(tcProj.slice(5)):"")+".</div>"
+  : '<table><thead><tr><th style="width:20%">Employee</th><th style="width:20%">Job</th><th>Shift</th><th style="width:100px">In</th><th style="width:100px">Out</th><th>Meal</th><th>Location</th><th class="n">Hours</th>'+($$?'<th class="n">Cost</th>':"")+'<th></th></tr></thead><tbody>'+
+      body+"</tbody></table>"+
+      '<p class="hint">Every punch writes a line on that day\'s job form for its shift, split into Reg, OT and DT by the schedule rules. Change a time here and the daily sheet changes with it.</p>';
   $("tcOut").innerHTML = html;
+  const tg=$("tcGroup"); if(tg) tg.onchange = ev=>{ try{ localStorage.setItem("adman_field_tcgroup", ev.target.checked?"1":"0"); }catch(e){} renderClock(); };
   $("tcOut").querySelectorAll("[data-pp]").forEach(el=>{
     const pid = el.dataset.pp, f = el.dataset.f;
     let p = null;
@@ -3677,15 +3931,23 @@ function renderClock(){
       p = db.punches.find(x=>x.id===pid); if(!p) return;
       if(f==="tin"||f==="tout"){
         const v = T.atHM(p.date, ev.target.value);
-        if(!v){ renderClock(); return; }
+        if(!v){ TC.hold = true; return; }                                      // half-typed: leave it until he moves on
         p[f] = v;
         if(p.tout && new Date(p.tout) < new Date(p.tin)){
           const d=new Date(p.tout); d.setDate(d.getDate()+1); p.tout=d.toISOString();
         }
       } else if(f==="meal") p.noMeal = !ev.target.checked;
       else p[f] = ev.target.value;
-      p.hours = punchHours(p); delete p.noLine; repost(p); save(); renderClock(); renderDaily();
+      p.hours = punchHours(p); delete p.noLine; repost(p); save();
+      if((f==="tin"||f==="tout") && document.activeElement===el){            // he is still in the field: keep the row where it is
+        TC.hold = true; const tr=el.closest("tr"), cells=tr?tr.querySelectorAll("td.n.num"):[];
+        if(cells[0]) cells[0].textContent = p.tout ? hrs(p.hours) : "";
+        if(cells[1]) cells[1].textContent = p.tout ? money(p.hours*lineRate(emp(p.empId), job(p.jobId), p.shift)) : "";
+        return;
+      }
+      renderClock(); renderDaily();
     };
+    if(f==="tin"||f==="tout") el.onblur = ()=>setTimeout(()=>{ if(TC.hold && !$("tcOut").contains(document.activeElement)){ TC.hold=false; renderClock(); renderDaily(); } }, 0);
   });
   $("tcOut").querySelectorAll("[data-pclose]").forEach(el=>el.onclick=()=>{
     const p = db.punches.find(x=>x.id===el.dataset.pclose);
@@ -3761,7 +4023,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v27";
+const APP_VERSION = "v31";
 let UPD = {ready:null, checking:false};
 function verNum(v){ const m=String(v||"").match(/v(\d+)/); return m?+m[1]:0; }
 function safeToReload(){

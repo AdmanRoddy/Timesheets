@@ -1,5 +1,5 @@
 /* Adman Field — offline cache. Bump CACHE when index.html changes. */
-const CACHE = "adman-field-v27";
+const CACHE = "adman-field-v31";
 const FILES = ["./", "./index.html", "./manifest.json", "./supabase.js"];
 const MARK = "adman_field_v1";                      // only a real copy of the app carries this
 /* cache what we can; a missing file must never stop the worker from installing */
