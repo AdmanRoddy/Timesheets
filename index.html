@@ -97,7 +97,8 @@ label.f{overflow:hidden}
 .row>button.b,.row>label.b,.row>a.b{min-height:42px;align-self:flex-end}
 .row>button.b.sm{min-height:42px;padding:7px 14px;font-size:15px}
 .row>.spacer{flex:1 1 0;min-width:0}
-input[type=text],input[type=number],input[type=date],input[type=time],select,textarea{
+input[type=search]{-webkit-appearance:none;appearance:none;width:100%}
+input[type=text],input[type=search],input[type=number],input[type=date],input[type=time],select,textarea{
   padding:9px 10px;border:1.5px solid var(--line);background:var(--paper);color:var(--ink);border-radius:8px;min-height:40px;font-size:15px;max-width:100%}
 input:focus,select:focus,textarea:focus{outline:3px solid var(--red);outline-offset:1px}
 textarea{min-height:56px;resize:vertical;width:100%}
@@ -227,7 +228,7 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
   .datenav>button.b{min-height:44px;min-width:48px;padding:7px 10px}
   .row>label.f>input[type=date]{max-width:100%}
   .row>button.b{flex:0 1 auto}
-  input[type=text],input[type=number],input[type=date],input[type=time],select,textarea,button.b{min-height:44px}
+  input[type=text],input[type=search],input[type=number],input[type=date],input[type=time],select,textarea,button.b{min-height:44px}
   .row>button.b,.row>button.b.sm{min-height:44px}
   .tot{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 }
@@ -386,6 +387,7 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
           <button class="b ghost sm" id="tcToday">Today</button>
         </span>
         <label class="f" id="tcProjWrap" hidden>Project<select id="tcProj"></select></label>
+        <label class="f" style="flex:1 1 180px;max-width:260px">Find<input type="search" id="tcQ" placeholder="Name or number" autocomplete="off"></label>
         <div class="spacer"></div>
         <button class="b" id="tcAdd">Add a punch by hand</button>
       </div>
@@ -1505,19 +1507,21 @@ function unpost(p){
   });
 }
 function post(p){
-  if(!p.tout || !p.jobId) return;
+  if(!p.jobId || !p.date) return;
   const rec = dayRec(p.date);
   const sh = okShift(p.shift);
   let f = rec.forms.find(x=>x.jobId===p.jobId && okShift(x.shift)===sh);
   if(!f){ f = newForm(sh); f.id = "f|"+p.date+"|"+p.jobId+"|"+sh; f.jobId = p.jobId; rec.forms.push(f); }   // same id on every device
-  let line = f.crew.find(c=>c.punchId===p.id);
+  let line = f.crew.find(c=>c.punchId===p.id), typed = false;
   if(!line){
     const hand = f.crew.find(c=>!c.punchId && c.empId===p.empId);          // the office already typed him in by hand
-    if(hand){ line = hand; line.punchId = p.id; if(!(+line.rt||0) && !(+line.ot||0) && !(+line.dt||0)) line.rt = p.hours; return; }
-    line = {empId:p.empId, rt:"", ot:"", dt:"", punchId:p.id}; f.crew.push(line);
+    if(hand){ line = hand; line.punchId = p.id; typed = !!((+line.rt||0)||(+line.ot||0)||(+line.dt||0)); }
+    else { line = {empId:p.empId, rt:"", ot:"", dt:"", punchId:p.id}; f.crew.push(line); }
   }
   line.empId = p.empId;
-  if(!line._e){ const s = lineSplit(p); line.rt = s.rt; line.ot = s.ot||""; line.dt = s.dt||""; }   // never undo an office correction
+  if(!p.tout){ if(!typed && !line._e) line.open = true; return; }         // on the clock: his name is on the sheet now, hours come at clock-out
+  delete line.open;
+  if(!line._e && !typed){ const s = lineSplit(p); line.rt = s.rt; line.ot = s.ot||""; line.dt = s.dt||""; }   // never undo an office correction
 }
 function repost(p){ unpost(p); post(p); }
 /* paid hours: time on the clock less the unpaid meal period, when the shift is long enough to have one.
@@ -1585,12 +1589,13 @@ function clockIn(empId, jobId){
   const e = emp(empId);
   const p = {id:uid(), empId, jobId, shift: e && e.crew==="night" ? "night" : "day",
              date:T.dateOf(T.now()), tin:T.now(), tout:null, hours:0};
-  db.punches.push(p); save(); return p;
+  db.punches.push(p); post(p); save(); return p;                        // his name goes on today's sheet right away
 }
 function clockOut(empId){
   const p = openPunch(empId); if(!p) return null;
   p.tout = T.now(); p.hours = punchHours(p);
   if((new Date(p.tout)-new Date(p.tin)) > 14*3600000) p.long = true; else delete p.long;   // forgot to clock out: the office gets a flag
+  delete p.noLine;                                                                          // a name the office took off while he was on the clock comes back with his hours
   post(p); save(); return p;
 }
 
@@ -1699,7 +1704,9 @@ function formHTML(f,i){
   const crewRows = f.crew.map((c,k)=>{
     const e = emp(c.empId); const r = lineRate(e, j, f.shift); const s=db.settings;
     const lineCost = (+c.rt||0)*r+(+c.ot||0)*r*s.otMult+(+c.dt||0)*r*s.dtMult;
-    return '<tr><td><select data-a="crewEmp" data-f="'+f.id+'" data-k="'+k+'"'+(c.punchId?' data-p="'+esc(c.punchId)+'"':"")+'>'+empOpts(c.empId)+'</select></td>'+
+    const op = c.punchId ? db.punches.find(x=>x.id===c.punchId && !x.tout) : null;
+    return '<tr><td><select data-a="crewEmp" data-f="'+f.id+'" data-k="'+k+'"'+(c.punchId?' data-p="'+esc(c.punchId)+'"':"")+'>'+empOpts(c.empId)+'</select>'+
+      (op ? '<div class="mini" style="color:var(--red)">On the clock since '+T.clock(op.tin)+'</div>' : c.open ? '<div class="mini">On the clock</div>' : "")+'</td>'+
       ['rt','ot','dt'].map(h=>'<td class="n"><input class="h num" type="number" step="0.25" min="0" data-a="crewH" data-h="'+h+'" data-f="'+f.id+'" data-k="'+k+'" value="'+(c[h]||"")+'"></td>').join("")+
       '<td class="n num" data-calc="rowhrs" data-f="'+f.id+'" data-k="'+k+'">'+hrs((+c.rt||0)+(+c.ot||0)+(+c.dt||0))+"</td>"+
       ($$ ? '<td class="n num" data-calc="rowcost" data-f="'+f.id+'" data-k="'+k+'">'+money(lineCost)+"</td>" : "")+
@@ -3129,8 +3136,8 @@ function mergeForm(a, b, skip){
     if(!c || (c.punchId && skip.has(c.punchId))) return;
     const k = lineKey(c), have = byKey.get(k);
     if(!have){ const n = copy(c); a.crew.push(n); byKey.set(k, n); return; }
-    const takeB = ts(c._e) > ts(have._e) || (!c._e && !have._e && c.punchId && freshLine(have) && !freshLine(c));
-    if(takeB){ have.rt=c.rt; have.ot=c.ot; have.dt=c.dt; have.empId=c.empId||have.empId; if(c._e) have._e=c._e; }
+    const takeB = ts(c._e) > ts(have._e) || (!c._e && !have._e && c.punchId && ((have.open && !c.open) || (!c.open && freshLine(have) && !freshLine(c))));
+    if(takeB){ have.rt=c.rt; have.ot=c.ot; have.dt=c.dt; have.empId=c.empId||have.empId; if(c._e) have._e=c._e; if(c.open) have.open=true; else delete have.open; }
   });
   a.crew = a.crew.filter(c=>c.punchId || !(a.xh[lineKey(c)] && ts(a.xh[lineKey(c)]) > ts(c._e)));   // a hand line the office removed stays removed
   const punchedBy = new Map(a.crew.filter(c=>c.punchId).map(c=>[c.empId, c]));
@@ -3186,17 +3193,17 @@ function mergeDay(local, cloud){
 }
 function healDays(){
   const cutoff = D.iso(new Date(Date.now()-21*86400000));
-  const ids = new Set(db.punches.map(p=>p.id)), have = new Set(), skip = noLineIds(), gone = SB.gone||new Set();
+  const ids = new Set(db.punches.map(p=>p.id)), have = new Set(), openIds = new Set(), skip = noLineIds(), gone = SB.gone||new Set();
   Object.keys(db.days||{}).forEach(d=>{
     if(d < cutoff || !db.days[d]) return;
     foldDay(db.days[d], skip);
     (db.days[d].forms||[]).forEach(f=>{
       if(!f) return;
       f.crew = (f.crew||[]).filter(c=>c && !(c.punchId && (gone.has(c.punchId) || skip.has(c.punchId))));   // only a punch we know was deleted
-      f.crew.forEach(c=>{ if(c.punchId) have.add(c.punchId); });
+      f.crew.forEach(c=>{ if(c.punchId){ have.add(c.punchId); if(c.open && !c._e) openIds.add(c.punchId); } });
     });
   });
-  db.punches.forEach(p=>{ if(p && p.tout && p.jobId && p.date && p.date >= cutoff && !p.noLine && !have.has(p.id)) post(p); });
+  db.punches.forEach(p=>{ if(p && p.jobId && p.date && p.date >= cutoff && !p.noLine && (!have.has(p.id) || (p.tout && openIds.has(p.id)))) post(p); });
 }
 /* a quick look upstairs for this man's open punch, so a man who clocked in on
    one iPad can clock out on another before the next 20-second sync */
@@ -3848,6 +3855,7 @@ document.addEventListener("keydown", e=>{
 let tcDate = D.iso(new Date()), tcProj = "";
 const TC = {hold:false};                                      // a time field is mid-edit: don't redraw under it
 $("tcProj").onchange = ev=>{ tcProj = ev.target.value; renderClock(); };
+$("tcQ").oninput = ()=>{ clearTimeout(TC.qt); TC.qt = setTimeout(renderClock, 120); };
 $("tcDate").value = tcDate;
 $("tcDate").onchange = e=>{
   const v=e.target.value;
@@ -3871,7 +3879,9 @@ function renderClock(){
   const tcFl = projList(visJobs());
   $("tcProjWrap").hidden = !tcFl.length; if(tcProj && !tcFl.includes(tcProj.slice(5))) tcProj = "";
   fillSelect($("tcProj"), [["","All projects"]].concat(tcFl.map(f=>["proj:"+f, f])), tcProj);
-  const inProj = p => !tcProj || jobMatch(job(p.jobId), tcProj);
+  const q = ($("tcQ").value||"").trim().toLowerCase();
+  const hit = p => { if(!q) return true; const e=emp(p.empId); return !!e && (e.name.toLowerCase().includes(q) || String(e.pin||"").startsWith(q)); };
+  const inProj = p => (!tcProj || jobMatch(job(p.jobId), tcProj)) && hit(p);
   const list = db.punches.filter(p=>p.date===tcDate && (canSeeJob(p.jobId) || canSeeEmp(p.empId)) && inProj(p))
     .sort((a,b)=>String(a.tin).localeCompare(String(b.tin)));
   const open = db.punches.filter(p=>!p.tout && (canSeeJob(p.jobId) || canSeeEmp(p.empId)) && inProj(p));
@@ -3880,14 +3890,19 @@ function renderClock(){
   if(long.length) html += '<div class="flag">'+long.length+' punch'+(long.length===1?"":"es")+' over 14 hours (probably a missed clock-out): '+long.map(p=>esc((emp(p.empId)||{}).name||"?")+" "+hrs(p.hours)+" h").join(", ")+". Fix the Out time here.</div>";
   const crewKey = id => { const e=emp(id); if(!e) return "~"; if(e.role==="foreman") return e.id; if(OFFICE.includes(e.role)) return "office"; const f=bossOf(id,"foreman"); return f ? f.id : "none"; };
   const crewLabel = k => k==="office" ? "Supervision" : k==="none" ? "No foreman set" : k==="~" ? "Unknown" : ((emp(k)||{}).name||"?")+"'s crew";
+  const gmode = (()=>{ let v="foreman"; try{ v=localStorage.getItem("adman_field_tcgroup")||"foreman"; }catch(e){} return v==="0"?"none":v==="1"?"foreman":v; })();
+  const gKey = p => gmode==="job" ? (p.jobId||"none") : gmode==="proj" ? (jobProj(job(p.jobId))||"none") : crewKey(p.empId);
+  const gLabel = k => gmode==="job" ? (k==="none" ? "No job" : (job(k) ? (jobProj(job(k))?jobProj(job(k))+" · ":"")+job(k).po+" · "+(job(k).name||"") : "(job removed)"))
+                    : gmode==="proj" ? (k==="none" ? "No folder" : k) : crewLabel(k);
+  const gColor = k => gmode==="foreman" && k!=="office"&&k!=="none"&&k!=="~" ? ((emp(k)||{}).color||"") : "";
   if(open.length) html += '<div class="flag warn">On the clock right now: <strong>'+open.length+'</strong> · '+
     (open.length <= 15
       ? open.map(p=>{ const e=emp(p.empId), j=job(p.jobId), ok=p.tin && !isNaN(new Date(p.tin)); return esc(e?e.name:"unknown man")+" ("+esc(j?j.po:"no job")+", since "+(ok?T.clock(p.tin):"unknown")+")"; }).join(", ")
-      : (()=>{ const c={}; open.forEach(p=>{ const k=crewKey(p.empId); c[k]=(c[k]||0)+1; }); return Object.keys(c).sort((a,b)=>ABC(crewLabel(a),crewLabel(b))).map(k=>esc(crewLabel(k))+" "+c[k]).join(" · "); })())+"</div>";
+      : (()=>{ const c={}; open.forEach(p=>{ const k=gmode==="none"?crewKey(p.empId):gKey(p); c[k]=(c[k]||0)+1; }); const lb=gmode==="none"?crewLabel:gLabel; return Object.keys(c).sort((a,b)=>ABC(lb(a),lb(b))).map(k=>esc(lb(k))+" "+c[k]).join(" · "); })())+"</div>";
   const offSite = list.filter(p=>(p.geoIn&&(p.geoIn.ok===false))||(p.geoOut&&p.geoOut.ok===false));
   if(offSite.length) html += '<div class="flag">'+offSite.length+' punch'+(offSite.length===1?"":"es")+' on '+D.us(tcDate)+' happened off site or without GPS: '+
     offSite.map(p=>esc((emp(p.empId)||{}).name||"?")).join(", ")+". See the Location column.</div>";
-  const grouped = localStorage.getItem("adman_field_tcgroup")!=="0";
+  const grouped = gmode!=="none";
   const cols = 9+($$?1:0);
   const rowOf = p=>{
         const e=emp(p.empId), r=lineRate(e, job(p.jobId), p.shift);
@@ -3907,23 +3922,23 @@ function renderClock(){
   if(!grouped) body = list.map(rowOf).join("");
   else {
     const groups = {};
-    list.forEach(p=>{ const k=crewKey(p.empId); (groups[k]=groups[k]||[]).push(p); });
-    Object.keys(groups).sort((a,b)=>ABC(crewLabel(a),crewLabel(b))).forEach(k=>{
+    list.forEach(p=>{ const k=gKey(p); (groups[k]=groups[k]||[]).push(p); });
+    Object.keys(groups).sort((a,b)=>ABC(gLabel(a),gLabel(b))).forEach(k=>{
       const ps = groups[k].slice().sort((a,b)=>ABC((emp(a.empId)||{}).name,(emp(b.empId)||{}).name) || String(a.tin).localeCompare(String(b.tin)));
       const men = new Set(ps.map(p=>p.empId)).size, onClock = ps.filter(p=>!p.tout).length, h = ps.reduce((a,p)=>a+(p.tout?+p.hours||0:0),0);
-      const col = k!=="office"&&k!=="none"&&k!=="~" ? ((emp(k)||{}).color||"") : "";
-      body += '<tr class="grp"><td colspan="'+cols+'"'+(col?' style="border-left:6px solid #'+col+'"':'')+'>'+(col?'<span class="swatch" style="background:#'+col+'"></span>':'')+esc(crewLabel(k))+
+      const col = gColor(k);
+      body += '<tr class="grp"><td colspan="'+cols+'"'+(col?' style="border-left:6px solid #'+col+'"':'')+'>'+(col?'<span class="swatch" style="background:#'+col+'"></span>':'')+esc(gLabel(k))+
         ' <span class="mini">· '+men+' '+(men===1?'man':'men')+' · '+onClock+' on the clock · '+hrs(h)+' h'+(ps.length!==men?' · '+ps.length+' punches':'')+'</span></td></tr>' + ps.map(rowOf).join("");
     });
   }
-  html += '<div class="row" style="margin:4px 0 8px"><label class="mini"><input type="checkbox" id="tcGroup"'+(grouped?" checked":"")+'> Group by foreman, with counts</label><span class="spacer"></span><span class="mini">'+list.length+' punch'+(list.length===1?'':'es')+' · '+new Set(list.map(p=>p.empId)).size+' men · '+hrs(list.reduce((a,p)=>a+(p.tout?+p.hours||0:0),0))+' h</span></div>';
+  html += '<div class="row" style="margin:4px 0 8px"><label class="mini">Group by <select id="tcGroup">'+[["foreman","foreman"],["job","job (PO)"],["proj","project folder"],["none","nothing"]].map(o=>'<option value="'+o[0]+'"'+(o[0]===gmode?" selected":"")+'>'+o[1]+'</option>').join("")+'</select> with counts</label><span class="spacer"></span><span class="mini">'+list.length+' punch'+(list.length===1?'':'es')+' · '+new Set(list.map(p=>p.empId)).size+' men · '+hrs(list.reduce((a,p)=>a+(p.tout?+p.hours||0:0),0))+' h</span></div>';
   html += !list.length
-    ? '<div class="empty">No punches on '+D.us(tcDate)+(tcProj?" for "+esc(tcProj.slice(5)):"")+".</div>"
+    ? '<div class="empty">No punches on '+D.us(tcDate)+(tcProj?" for "+esc(tcProj.slice(5)):"")+(q?" matching \u201c"+esc(q)+"\u201d":"")+".</div>"
   : '<table><thead><tr><th style="width:20%">Employee</th><th style="width:20%">Job</th><th>Shift</th><th style="width:100px">In</th><th style="width:100px">Out</th><th>Meal</th><th>Location</th><th class="n">Hours</th>'+($$?'<th class="n">Cost</th>':"")+'<th></th></tr></thead><tbody>'+
       body+"</tbody></table>"+
       '<p class="hint">Every punch writes a line on that day\'s job form for its shift, split into Reg, OT and DT by the schedule rules. Change a time here and the daily sheet changes with it.</p>';
   $("tcOut").innerHTML = html;
-  const tg=$("tcGroup"); if(tg) tg.onchange = ev=>{ try{ localStorage.setItem("adman_field_tcgroup", ev.target.checked?"1":"0"); }catch(e){} renderClock(); };
+  const tg=$("tcGroup"); if(tg) tg.onchange = ev=>{ try{ localStorage.setItem("adman_field_tcgroup", ev.target.value); }catch(e){} renderClock(); };
   $("tcOut").querySelectorAll("[data-pp]").forEach(el=>{
     const pid = el.dataset.pp, f = el.dataset.f;
     let p = null;
@@ -4023,7 +4038,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v31";
+const APP_VERSION = "v32";
 let UPD = {ready:null, checking:false};
 function verNum(v){ const m=String(v||"").match(/v(\d+)/); return m?+m[1]:0; }
 function safeToReload(){
