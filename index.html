@@ -223,6 +223,14 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
 
 /* Digital Timesheet: fits a laptop; when it still cannot, it scrolls inside its own card, not off the page */
 #tcOut{overflow-x:auto;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+#tcNew{border:1.5px solid var(--navy);border-radius:12px;padding:12px 14px;margin:6px 0 12px;background:var(--tile)}
+#tcNew h3{margin:0 0 8px;font-family:"Barlow Semi Condensed",sans-serif;font-size:18px}
+#tcNew .row{align-items:flex-end}
+#tcNew label.f{flex:0 1 auto}
+#tcNew .npwho{flex:1 1 260px;max-width:420px}
+#tcNew .npwho select{width:100%}
+#tcNew .npjob{flex:1 1 220px;max-width:360px}
+#tcNew .npjob select{width:100%}
 #tcOut th,#tcOut td{padding:7px 4px}
 #tcOut td select{min-width:0}
 #tcOut input[type=time]{width:132px;min-width:132px;padding:6px 4px 6px 8px;font-size:14px}
@@ -418,6 +426,7 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
         <div class="spacer"></div>
         <button class="b" id="tcAdd">Add a punch by hand</button>
       </div>
+      <div id="tcNew" hidden></div>
       <div id="tcOut"></div>
     </div>
   </div>
@@ -1619,6 +1628,8 @@ function clockIn(empId, jobId){
   db.punches.push(p); post(p); save(); return p;                        // his name goes on today's sheet right away
 }
 function clockOut(empId){
+  const opens = db.punches.filter(x=>x.empId===empId && !x.tout).sort((a,b)=>String(a.tin).localeCompare(String(b.tin)));
+  if(opens.length>1 && opens.every(x=>x.date===opens[0].date)) fixDoubles(opens);              // clocked in twice today: keep it straight
   const p = openPunch(empId); if(!p) return null;
   p.tout = T.now(); p.hours = punchHours(p);
   if((new Date(p.tout)-new Date(p.tin)) > 14*3600000) p.long = true; else delete p.long;   // forgot to clock out: the office gets a flag
@@ -3892,14 +3903,72 @@ $("tcDate").onchange = e=>{
 $("tcPrev").onclick = ()=>{ tcDate=D.add(tcDate,-1); $("tcDate").value=tcDate; renderClock(); };
 $("tcNext").onclick = ()=>{ tcDate=D.add(tcDate, 1); $("tcDate").value=tcDate; renderClock(); };
 $("tcToday").onclick= ()=>{ tcDate=D.iso(new Date()); $("tcDate").value=tcDate; renderClock(); };
-$("tcAdd").onclick  = ()=>{
-  const cr = visCrew(), vj = visJobs();
+$("tcAdd").onclick  = ()=>{ if($("tcNew").hidden) openNewPunch(); else closeNewPunch(); };
+function closeNewPunch(){ $("tcNew").hidden = true; $("tcNew").innerHTML = ""; $("tcAdd").textContent = "Add a punch by hand"; }
+/* a blank punch form: nothing exists until Add is pressed */
+function openNewPunch(){
+  const cr = visCrew().filter(e=>e.active!==false).sort(byName), vj = visJobs().filter(j=>j.active!==false);
   if(!cr.length||!vj.length) return tell("Add employees and jobs first.");
-  const e = cr[0]; const night = e.crew==="night";
-  const p={id:uid(), empId:e.id, jobId:vj[0].id, date:tcDate, shift: night?"night":"day",
-           tin:T.atHM(tcDate, night?"18:00":"07:00"), tout:T.atHM(night?D.add(tcDate,1):tcDate, night?"02:30":"15:30"), hours:0};
-  p.hours=punchHours(p); db.punches.push(p); post(p); save(); renderClock();
-};
+  const box = $("tcNew"); box.hidden = false; $("tcAdd").textContent = "Close";
+  const empOpt = q => { q=(q||"").trim().toLowerCase(); const hit = cr.filter(e=>!q || e.name.toLowerCase().includes(q) || String(e.pin||"").startsWith(q));
+    return '<option value="">'+(hit.length?"Pick a man ("+hit.length+")":"Nobody matches")+'</option>'+hit.map(e=>'<option value="'+e.id+'">'+esc(e.name)+(e.pin?" · "+esc(e.pin):"")+(e.crew==="night"?" (N)":"")+"</option>").join(""); };
+  box.innerHTML = '<h3>New punch</h3><div class="row">'+
+    '<label class="f" style="flex:0 1 200px">Find<input type="search" id="npQ" placeholder="Name or number" autocomplete="off"></label>'+
+    '<label class="f npwho">Employee<select id="npEmp">'+empOpt("")+'</select></label>'+
+    '<label class="f npjob">Job<select id="npJob">'+jobOptHTML(vj, tcProj&&tcProj.startsWith("proj:")&&projOf(tcProj.slice(5),vj).length===1 ? projOf(tcProj.slice(5),vj)[0].id : "", "Pick a job")+'</select></label>'+
+    '<label class="f">Shift<select id="npShift"><option value="day">Day</option><option value="night">Night</option></select></label>'+
+    '<label class="f">Date<input type="date" id="npDate" value="'+tcDate+'"></label>'+
+    '<label class="f">In<input type="time" id="npIn" value="07:00"></label>'+
+    '<label class="f">Out<input type="time" id="npOut" value=""></label>'+
+    '<span class="mini" id="npNote" style="flex-basis:100%">Leave <strong>Out</strong> blank if he is still on the clock.</span>'+
+    '<button class="b" id="npAdd">Add punch</button><button class="b ghost" id="npCancel">Cancel</button></div>';
+  $("npQ").oninput = ()=>{ const keep=$("npEmp").value; $("npEmp").innerHTML = empOpt($("npQ").value);
+    if(keep && [...$("npEmp").options].some(o=>o.value===keep)) $("npEmp").value = keep;
+    else if($("npEmp").options.length===2){ $("npEmp").selectedIndex = 1; $("npEmp").onchange(); }     // one match: that's him
+    noteNew(); };
+  $("npEmp").onchange = ()=>{ const e=emp($("npEmp").value); if(e){ $("npShift").value = e.crew==="night"?"night":"day"; if(!$("npIn").value || $("npIn").value==="07:00" || $("npIn").value==="18:00") $("npIn").value = e.crew==="night"?"18:00":"07:00"; } noteNew(); };
+  $("npDate").onchange = noteNew; $("npIn").onchange = noteNew; $("npOut").onchange = noteNew;
+  $("npCancel").onclick = closeNewPunch;
+  $("npAdd").onclick = addNewPunch;
+  setTimeout(()=>$("npQ").focus(), 50);
+}
+function noteNew(){
+  const e = emp($("npEmp").value), d = $("npDate").value; const n = $("npNote"); if(!n) return;
+  if(!e){ n.innerHTML = "Leave <strong>Out</strong> blank if he is still on the clock."; return; }
+  const same = db.punches.filter(p=>p.empId===e.id && p.date===d);
+  n.innerHTML = same.length
+    ? '<span style="color:var(--red)">'+esc(e.name)+" already has "+same.length+" punch"+(same.length===1?"":"es")+" on "+D.us(d)+": "+same.map(p=>T.clock(p.tin)+(p.tout?"–"+T.clock(p.tout):" (on the clock)")).join(", ")+".</span> Add another only if he really worked twice that day."
+    : esc(e.name)+" has nothing on "+D.us(d)+" yet. Leave <strong>Out</strong> blank if he is still on the clock.";
+}
+async function addNewPunch(){
+  const e = emp($("npEmp").value), jid = $("npJob").value, d = $("npDate").value, sh = okShift($("npShift").value), hin = $("npIn").value, hout = $("npOut").value;
+  if(!e) return tell("Pick the man first: type part of his name or his number, then choose him.");
+  if(!jid || jid.startsWith("proj:")) return tell("Pick the job.");
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d)) return tell("Pick the date.");
+  if(!hin) return tell("Enter the In time.");
+  const p = {id:uid(), empId:e.id, jobId:jid, date:d, shift:sh, tin:T.atHM(d, hin), tout:null, hours:0, hand:true};
+  if(hout){ p.tout = T.atHM(d, hout); if(new Date(p.tout) < new Date(p.tin)){ const x=new Date(p.tout); x.setDate(x.getDate()+1); p.tout = x.toISOString(); } p.hours = punchHours(p); }
+  const open = db.punches.filter(x=>x.empId===e.id && !x.tout);
+  if(!hout && open.length && !await ask(e.name+" is already on the clock since "+T.clock(open[0].tin)+" on "+(job(open[0].jobId)||{}).po+". Add a second open punch anyway?", true)) return;
+  const dup = db.punches.find(x=>x.empId===e.id && x.date===d && x.jobId===jid && T.hm(x.tin)===T.hm(p.tin));
+  if(dup) return tell("That punch is already there: "+e.name+", "+D.us(d)+", in at "+T.clock(p.tin)+".");
+  db.punches.push(p); post(p); save(); closeNewPunch(); renderClock(); renderDaily();
+}
+/* two open punches for one man on one day: an offline iPad let him clock in twice. Keep the first;
+   a second on the same job is a duplicate and goes; a second on another job means he moved, so the
+   first closes when the second began. */
+function doublesOn(date){
+  const by = {}; db.punches.forEach(p=>{ if(p.date===date && !p.tout && p.empId) (by[p.empId]=by[p.empId]||[]).push(p); });
+  return Object.values(by).filter(ps=>ps.length>1).map(ps=>ps.sort((a,b)=>String(a.tin).localeCompare(String(b.tin))));
+}
+function fixDoubles(ps){
+  let real = ps[0], n = 0;
+  ps.slice(1).forEach(p=>{
+    if(p.jobId===real.jobId && okShift(p.shift)===okShift(real.shift)){ unpost(p); removeRec("punches", p.id); n++; }
+    else { real.tout = p.tin; real.hours = punchHours(real); post(real); real = p; n++; }
+  });
+  return n;
+}
 function renderClock(){
   TC.hold = false;
   const $$ = money$();
@@ -3926,6 +3995,9 @@ function renderClock(){
     (open.length <= 15
       ? open.map(p=>{ const e=emp(p.empId), j=job(p.jobId), ok=p.tin && !isNaN(new Date(p.tin)); return esc(e?e.name:"unknown man")+" ("+esc(j?j.po:"no job")+", since "+(ok?T.clock(p.tin):"unknown")+")"; }).join(", ")
       : (()=>{ const c={}; open.forEach(p=>{ const k=gmode==="none"?crewKey(p.empId):gKey(p); c[k]=(c[k]||0)+1; }); const lb=gmode==="none"?crewLabel:gLabel; return Object.keys(c).sort((a,b)=>ABC(lb(a),lb(b))).map(k=>esc(lb(k))+" "+c[k]).join(" · "); })())+"</div>";
+  const dbl = doublesOn(tcDate).filter(ps=>canSeeEmp(ps[0].empId));
+  if(dbl.length) html += '<div class="flag"><strong>Clocked in twice today:</strong> '+dbl.map(ps=>esc((emp(ps[0].empId)||{}).name||"?")+" ("+ps.map(p=>T.clock(p.tin)).join(" and ")+")").join(", ")+
+    '. Usually an iPad that was offline when the first punch happened. <button class="b sm" id="tcFixDbl">Keep the first punch, drop the duplicate</button> <span class="mini">A second punch on a different job closes the first one at that time instead.</span></div>';
   const offSite = list.filter(p=>(p.geoIn&&(p.geoIn.ok===false))||(p.geoOut&&p.geoOut.ok===false));
   if(offSite.length) html += '<div class="flag">'+offSite.length+' punch'+(offSite.length===1?"":"es")+' on '+D.us(tcDate)+' happened off site or without GPS: '+
     offSite.map(p=>esc((emp(p.empId)||{}).name||"?")).join(", ")+". See the Location column.</div>";
@@ -3966,6 +4038,9 @@ function renderClock(){
       '<p class="hint">Every punch writes a line on that day\'s job form for its shift, split into Reg, OT and DT by the schedule rules. Change a time here and the daily sheet changes with it.</p>';
   $("tcOut").innerHTML = html;
   const tg=$("tcGroup"); if(tg) tg.onchange = ev=>{ try{ localStorage.setItem("adman_field_tcgroup", ev.target.value); }catch(e){} renderClock(); };
+  const fx=$("tcFixDbl"); if(fx) fx.onclick = async ()=>{ const d=doublesOn(tcDate).filter(ps=>canSeeEmp(ps[0].empId)); if(!d.length) return renderClock();
+    if(!await ask("Sort out "+d.length+" double clock-in"+(d.length===1?"":"s")+" on "+D.us(tcDate)+"? The first punch stays; a duplicate on the same job is removed.", true)) return;
+    snapshot(true, "before fixing double clock-ins"); let n=0; d.forEach(ps=>{ n+=fixDoubles(ps); }); save(); renderClock(); renderDaily(); tell(n+" punch"+(n===1?"":"es")+" sorted out."); };
   $("tcOut").querySelectorAll("[data-pp]").forEach(el=>{
     const pid = el.dataset.pp, f = el.dataset.f;
     let p = null;
@@ -4065,7 +4140,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v33";
+const APP_VERSION = "v34";
 let UPD = {ready:null, checking:false};
 function verNum(v){ const m=String(v||"").match(/v(\d+)/); return m?+m[1]:0; }
 function safeToReload(){
