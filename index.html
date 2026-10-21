@@ -221,6 +221,33 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
 .dlg-box{background:var(--paper);color:var(--ink);max-width:440px;width:100%;padding:18px;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.3)}
 .dlg-box p{margin:0 0 14px;font-size:15px;line-height:1.45}
 
+/* Digital Timesheet: fits a laptop; when it still cannot, it scrolls inside its own card, not off the page */
+#tcOut{overflow-x:auto;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+#tcOut th,#tcOut td{padding:7px 4px}
+#tcOut td select{min-width:0}
+#tcOut input[type=time]{width:132px;min-width:132px;padding:6px 4px 6px 8px;font-size:14px}
+#tcOut th.tTime2{width:276px}
+#tcOut .tms{display:flex;gap:6px;flex-wrap:wrap;align-items:center;min-width:270px}      /* side by side; stacks below 900px */
+#tcOut .tms input[type=time]{flex:0 0 auto}
+#tcOut td.loc{white-space:normal;min-width:104px}
+#tcOut td.loc .chip{display:inline-block;margin:1px 2px 1px 0;white-space:nowrap}
+#tcOut select[data-f="shift"]{min-width:78px}
+#tcOut select[data-f="empId"]{min-width:128px}
+#tcOut select[data-f="jobId"]{min-width:104px}
+#tcOut table{min-width:640px}
+@media (max-width:1180px){
+  #tcOut table{font-size:13px}
+  #tcOut td input,#tcOut td select{min-height:34px;padding:4px 6px;font-size:14px}
+  #tcOut input[type=time]{width:118px;min-width:118px;padding:4px 2px 4px 6px;font-size:13px}
+  #tcOut th.tTime2{width:auto}
+  #tcOut .tms{min-width:242px}
+  #tcOut th,#tcOut td{padding:5px 3px}
+  #tcOut .chip{padding:2px 6px;font-size:11px}
+  tr.grp td{padding:7px 6px;font-size:15px}
+}
+@media (max-width:900px){
+  #tcOut .tms{min-width:118px}
+}
 @media (max-width:640px){
   .card>h2{font-size:17px}
   .row>label.f{flex:1 1 150px}
@@ -3903,7 +3930,7 @@ function renderClock(){
   if(offSite.length) html += '<div class="flag">'+offSite.length+' punch'+(offSite.length===1?"":"es")+' on '+D.us(tcDate)+' happened off site or without GPS: '+
     offSite.map(p=>esc((emp(p.empId)||{}).name||"?")).join(", ")+". See the Location column.</div>";
   const grouped = gmode!=="none";
-  const cols = 9+($$?1:0);
+  const cols = 8+($$?1:0);
   const rowOf = p=>{
         const e=emp(p.empId), r=lineRate(e, job(p.jobId), p.shift);
         return '<tr><td><select data-pp="'+p.id+'" data-f="empId">'+
@@ -3911,12 +3938,12 @@ function renderClock(){
           '<td><select data-pp="'+p.id+'" data-f="jobId">'+
           jobOptHTML(db.jobs.filter(x=>canSeeJob(x.id)||x.id===p.jobId), p.jobId, "", false, true)+"</select></td>"+
           '<td><select data-pp="'+p.id+'" data-f="shift"><option value="day"'+(p.shift!=="night"?" selected":"")+'>Day</option><option value="night"'+(p.shift==="night"?" selected":"")+'>Night</option></select></td>'+
-          '<td><input type="time" data-pp="'+p.id+'" data-f="tin" value="'+T.hm(p.tin)+'"></td>'+
-          '<td>'+(p.tout?'<input type="time" data-pp="'+p.id+'" data-f="tout" value="'+T.hm(p.tout)+'">':'<button class="b ghost sm" data-pclose="'+p.id+'">Clock out now</button>')+"</td>"+
+          '<td class="tm"><div class="tms"><input type="time" data-pp="'+p.id+'" data-f="tin" value="'+T.hm(p.tin)+'">'+
+          (p.tout?'<input type="time" data-pp="'+p.id+'" data-f="tout" value="'+T.hm(p.tout)+'">':'<button class="b ghost sm" data-pclose="'+p.id+'">Clock out now</button>')+"</div></td>"+
           '<td><input type="checkbox" data-pp="'+p.id+'" data-f="meal" title="Unpaid meal taken"'+(p.noMeal?"":" checked")+"></td>"+
-          '<td style="white-space:nowrap">'+geoCell(p)+"</td>"+
+          '<td class="loc">'+geoCell(p)+"</td>"+
           '<td class="n num">'+(p.tout?hrs(p.hours):"")+"</td>"+($$?'<td class="n num">'+(p.tout?money(p.hours*r):"")+"</td>":"")+
-          '<td><button class="x" data-pdel="'+p.id+'">&times;</button></td></tr>';
+          '<td style="width:26px"><button class="x" data-pdel="'+p.id+'">&times;</button></td></tr>';
       };
   let body = "";
   if(!grouped) body = list.map(rowOf).join("");
@@ -3934,7 +3961,7 @@ function renderClock(){
   html += '<div class="row" style="margin:4px 0 8px"><label class="mini">Group by <select id="tcGroup">'+[["foreman","foreman"],["job","job (PO)"],["proj","project folder"],["none","nothing"]].map(o=>'<option value="'+o[0]+'"'+(o[0]===gmode?" selected":"")+'>'+o[1]+'</option>').join("")+'</select> with counts</label><span class="spacer"></span><span class="mini">'+list.length+' punch'+(list.length===1?'':'es')+' · '+new Set(list.map(p=>p.empId)).size+' men · '+hrs(list.reduce((a,p)=>a+(p.tout?+p.hours||0:0),0))+' h</span></div>';
   html += !list.length
     ? '<div class="empty">No punches on '+D.us(tcDate)+(tcProj?" for "+esc(tcProj.slice(5)):"")+(q?" matching \u201c"+esc(q)+"\u201d":"")+".</div>"
-  : '<table><thead><tr><th style="width:20%">Employee</th><th style="width:20%">Job</th><th>Shift</th><th style="width:100px">In</th><th style="width:100px">Out</th><th>Meal</th><th>Location</th><th class="n">Hours</th>'+($$?'<th class="n">Cost</th>':"")+'<th></th></tr></thead><tbody>'+
+  : '<table><thead><tr><th style="width:19%">Employee</th><th style="width:14%">Job</th><th style="width:88px">Shift</th><th class="tTime2">In &middot; Out</th><th style="width:40px">Meal</th><th>Location</th><th class="n">Hours</th>'+($$?'<th class="n">Cost</th>':"")+'<th></th></tr></thead><tbody>'+
       body+"</tbody></table>"+
       '<p class="hint">Every punch writes a line on that day\'s job form for its shift, split into Reg, OT and DT by the schedule rules. Change a time here and the daily sheet changes with it.</p>';
   $("tcOut").innerHTML = html;
@@ -4038,7 +4065,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v32";
+const APP_VERSION = "v33";
 let UPD = {ready:null, checking:false};
 function verNum(v){ const m=String(v||"").match(/v(\d+)/); return m?+m[1]:0; }
 function safeToReload(){
