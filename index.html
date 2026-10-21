@@ -233,8 +233,9 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
     <div class="who" id="kWho"></div>
     <button class="b ghost sm" id="kOffice">Office</button>
   </div>
+  <div id="kSync" style="text-align:center;font-size:14px;font-weight:600;margin:10px auto 0;padding:0 16px;max-width:560px"></div>
   <div class="k-wrap"><div class="k-card" id="kCard"></div></div>
-  <button id="kVer" style="display:block;margin:6px auto 14px;background:none;border:0;color:inherit;opacity:.55;font-size:12px;cursor:pointer" title="Tap to check for an update"></button>
+  <button id="kVer" style="display:block;margin:4px auto 14px;background:none;border:0;color:inherit;opacity:.55;font-size:12px;cursor:pointer" title="Tap to check for an update"></button>
 </div>
 
 <header class="top"><div class="top-in">
@@ -2808,7 +2809,27 @@ function sbCfg(){
            schema:(localStorage.getItem("adman_field_sb_schema")||"field").trim()||"field" };
 }
 function sbMsg(t, cls){ const el=$("sbMsg"); if(el) el.innerHTML = t?'<div class="flag '+(cls||"")+'">'+t+"</div>":""; }
+/* the keypad says, in one line, whether this iPad's punches are reaching the office */
+function kSyncTag(){
+  const el=$("kSync"); if(!el) return;
+  const cfg=sbCfg();
+  let text, color;
+  if(!cfg.url || !cfg.key){ text="SYNC NOT SET UP: punches stay on this iPad only. Tell the office."; color="#b42318"; }
+  else if(SB.on){
+    const stuck = SB.dirty && SB.dirty.size && SB.last && (Date.now()-new Date(SB.last).getTime() > 10*60000);
+    text = stuck ? "Syncing as "+(SB.label||"")+" · "+SB.dirty.size+" change"+(SB.dirty.size===1?"":"s")+" waiting to send"
+                 : "Syncing as "+(SB.label||"")+(SB.last?" · last "+T.clock(SB.last):"");
+    color = stuck ? "#b45309" : "rgba(255,255,255,.75)";
+  }
+  else { text="NOT SYNCING: this iPad is not signed in. Punches are saved here but the office can't see them. Tell the office."; color="#b42318"; }
+  el.textContent = text; el.style.color = color;
+  el.style.background = (color==="#b42318"||color==="#b45309") ? "rgba(255,255,255,.92)" : "transparent";
+  if(color==="rgba(255,255,255,.75)"){ color="var(--ink-2)"; el.style.color=color; el.style.fontWeight="500"; el.style.fontSize="12px"; } else { el.style.fontWeight="700"; el.style.fontSize="14px"; }
+  el.style.borderRadius="10px"; el.style.padding = (el.style.background==="transparent") ? "0 16px" : "10px 14px"; el.style.maxWidth="560px";
+  el.style.border = (el.style.background!=="transparent") ? "1.5px solid "+color : "0";
+}
 function sbTag(){
+  try{ kSyncTag(); }catch(e){}
   const rw=$("roleWarn");
   if(rw) rw.innerHTML = (SB.on && SB.role==="tablet")
     ? '<div class="flag warn" style="margin:10px 16px 0"><strong>This device is signed in with the tablet login.</strong> Clock-ins and daily sheets sync, but changes to crew, jobs, PMs and settings are not saved to the cloud and will be put back. To make office changes, sign in with your own login under Settings → Sync.</div>'
@@ -3403,6 +3424,7 @@ function keypad(){
     '<button data-k="clr">Clear</button><button data-k="0">0</button><button data-k="go">Enter</button></div>';
 }
 function drawK(){
+  try{ kSyncTag(); }catch(e){}
   const c = $("kCard");
   const e = K.empId ? emp(K.empId) : null;
   $("kWho").textContent = e ? e.name : "";
@@ -3739,7 +3761,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v26";
+const APP_VERSION = "v27";
 let UPD = {ready:null, checking:false};
 function verNum(v){ const m=String(v||"").match(/v(\d+)/); return m?+m[1]:0; }
 function safeToReload(){
@@ -3753,6 +3775,7 @@ async function applyUpdate(){
 }
 function showUpdate(){
   const v=$("kVer"); if(v) v.textContent = "App "+APP_VERSION+(UPD.ready?" · update "+UPD.ready+" ready":"");
+  try{ kSyncTag(); }catch(e){}
   let bar=$("updBar");
   if(UPD.ready && !db.kiosk){
     if(!bar){ bar=document.createElement("div"); bar.id="updBar"; bar.className="flag warn"; bar.style.margin="10px 16px 0";
