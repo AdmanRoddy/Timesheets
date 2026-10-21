@@ -16,15 +16,15 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
-  --navy:#0b2339; --red:#bd1d23; --red-dk:#951419;
+  --navy:#0b2339; --red:#bd1d23; --red-dk:#951419; --btn:#0b2339; --btn-ink:#ffffff;
   --ink:#0b2339; --ink-2:#5a6675; --line:#d6dbe1; --line-2:#e6e9ee;
   --field:#f7f8fa; --paper:#ffffff; --shell:#eef0f3; --tile:#ffffff;
   --ok:#1e7a46; --warn:#b8720c; --pad:14px;
   box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
 }
 @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
-  --ink:#eef0f3; --ink-2:#9aa6b4; --line:#2b3947; --line-2:#22303d; --field:#1f2c3b; --paper:#172230; --shell:#0e161f; --tile:#1c2836; --navy:#dfe6ee; }}
-:root[data-theme="dark"]{ --ink:#eef0f3; --ink-2:#9aa6b4; --line:#2b3947; --line-2:#22303d; --field:#1f2c3b; --paper:#172230; --shell:#0e161f; --tile:#1c2836; --navy:#dfe6ee; }
+  --ink:#eef0f3; --ink-2:#9aa6b4; --line:#2b3947; --line-2:#22303d; --field:#1f2c3b; --paper:#172230; --shell:#0e161f; --tile:#1c2836; --navy:#dfe6ee; --btn:#34516f; --btn-ink:#ffffff; }}
+:root[data-theme="dark"]{ --ink:#eef0f3; --ink-2:#9aa6b4; --line:#2b3947; --line-2:#22303d; --field:#1f2c3b; --paper:#172230; --shell:#0e161f; --tile:#1c2836; --navy:#dfe6ee; --btn:#34516f; --btn-ink:#ffffff; }
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -187,14 +187,24 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
 .jobbtn{display:block;width:100%;text-align:left;padding:15px 16px;margin-bottom:9px;border:1.5px solid var(--line);background:var(--tile);color:var(--ink);cursor:pointer;font-family:"Barlow Semi Condensed",sans-serif;font-size:19px;font-weight:600;border-radius:12px}
 .jobbtn small{display:block;font-family:Inter,sans-serif;font-weight:400;color:var(--ink-2);font-size:13px;margin-top:3px}
 .jobbtn:active{background:var(--field)}
+.jobbtn.cur{border-color:var(--ok);background:rgba(30,122,70,.12);box-shadow:inset 4px 0 0 var(--ok)}
+.jobbtn .nowtag{display:inline-block;margin-left:10px;padding:2px 8px;border-radius:999px;background:var(--ok);color:#fff;font-family:Inter,sans-serif;font-size:12px;font-weight:600;vertical-align:middle}
+.ktabs button .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--ok);margin-right:6px;vertical-align:middle}
 .ktabs{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap}
 .ktabs button{flex:1 1 120px;padding:12px 10px;border:1.5px solid var(--line);background:var(--tile);color:var(--ink);border-radius:12px;font-family:"Barlow Semi Condensed",sans-serif;font-size:19px;font-weight:600;cursor:pointer}
 .ktabs button small{display:block;font-family:Inter,sans-serif;font-weight:400;font-size:12px;color:var(--ink-2);margin-top:2px}
-.ktabs button.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+.ktabs button.on{background:var(--btn);color:var(--btn-ink);border-color:var(--btn)}
 .ktabs button.on small{color:#c9d3df}
 .jfold{display:flex;align-items:baseline;gap:10px;margin:18px 0 2px;padding-bottom:4px;border-bottom:2px solid var(--line);font-family:"Barlow Semi Condensed",sans-serif;font-size:20px;font-weight:700;color:var(--navy)}
 .jfold .mini{font-weight:400}
 .big{font-size:20px;padding:16px 26px;width:100%;margin-top:10px}
+a.b.big{display:block;text-align:center;background:var(--btn);color:var(--btn-ink);border-color:var(--btn);font-family:"Barlow Semi Condensed",sans-serif;font-weight:700;font-size:20px;padding:16px 26px;margin-top:10px;border-radius:9px}
+a.b.big.done{background:var(--ok);border-color:var(--ok)}
+a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-size:13px;margin-top:3px;opacity:.9}
+.spjob{border:1.5px solid var(--line);border-radius:12px;padding:10px 14px;margin:8px 0;background:var(--tile)}
+.spjob h4{margin:0 0 6px;font-family:"Barlow Semi Condensed",sans-serif;font-size:17px}
+.spitem{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:6px 0;border-top:1px solid var(--line-2)}
+.spitem a.lnk{color:var(--navy);word-break:break-all;max-width:420px}
 .onclock{background:rgba(30,122,70,.1);border-left:5px solid var(--ok);padding:14px 16px;font-size:16px;margin-bottom:14px;border-radius:0 10px 10px 0}
 .cal{width:100%;border-collapse:collapse;table-layout:fixed}
 .cal th{padding:7px 2px;font-size:11px;background:var(--field)}
@@ -281,6 +291,7 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
   <div id="kSync" style="text-align:center;font-size:14px;font-weight:600;margin:10px auto 0;padding:0 16px;max-width:560px"></div>
   <div class="k-wrap"><div class="k-card" id="kCard"></div></div>
   <button id="kVer" style="display:block;margin:4px auto 14px;background:none;border:0;color:inherit;opacity:.55;font-size:12px;cursor:pointer" title="Tap to check for an update"></button>
+  <p id="kHint" class="mini" style="text-align:center;margin:-8px 16px 14px;opacity:.7" hidden></p>
 </div>
 
 <header class="top"><div class="top-in">
@@ -299,6 +310,7 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
   <button data-v="jobs">Jobs</button>
   <button data-v="clock">Digital Timesheet</button>
   <button data-v="timeoff">Time off <span id="toBadge"></span></button>
+  <button data-v="safety">Safety</button>
   <button data-v="reports">Reports</button>
   <button data-v="export">Download</button>
   <button data-v="settings">Settings</button>
@@ -433,6 +445,23 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
 </section>
 
 <!-- ======================= TIME OFF ======================= -->
+<section id="v-safety" hidden>
+  <div class="card"><h2>Safety sign-ins<span class="tag">What the crew signs right after clocking in</span></h2>
+    <div class="body">
+      <div class="row">
+        <label class="f">Post<select id="spKind"><option value="ptp">PTP (one work day)</option><option value="talk">Toolbox talk (each man once)</option></select></label>
+        <label class="f" id="spTitleWrap">Title<input type="text" id="spTitle" placeholder="MV terminations" style="width:200px"></label>
+        <label class="f" style="flex:1 1 300px">Sign-in link<input type="text" id="spUrl" placeholder="Paste the link the men sign on" autocomplete="off"></label>
+        <label class="f" style="flex:1 1 200px">On<select id="spJob"></select></label>
+        <label class="f" style="flex:1 1 180px">Crew<select id="spCrew"><option value="">Everyone on the job</option></select></label>
+        <label class="f" id="spDateWrap">For<input type="date" id="spDate"></label>
+        <button class="b" id="spAdd">Post it</button>
+      </div>
+      <p class="hint">A <strong>PTP</strong> is for one work day and, usually, one crew: paste the link, pick the job, the foreman whose crew it is (or everyone on the job), and the day it is for. The date starts on tomorrow after noon, since the links are generated the evening before. A man is shown the PTPs posted for his crew on the day he clocks in. A <strong>toolbox talk</strong> stays up until you take it down, and each man sees it once (title required). Pick a folder under <em>On</em> to post the same link to every PO in it. If the form can take the name in its address, write <code>{name}</code> where it goes (also <code>{number}</code>, <code>{date}</code>, <code>{job}</code>) and the app fills in the man tapping it. When a man clocks in on that job the keypad shows him the link; tapping it opens the sign-in page, marks him as opened it, and puts the keypad back on the number pad.</p>
+      <div id="spOut"></div>
+    </div>
+  </div>
+</section>
 <section id="v-timeoff" hidden>
   <div class="card"><h2>Time off requests</h2><div class="body"><div id="toOut"></div></div></div>
   <div class="card"><h2>Reminders</h2><div class="body">
@@ -1030,7 +1059,7 @@ function sanitize(d){
   d.jobs      = d.jobs.filter(x=>String(x.po||"").trim());
   const ids = new Set(d.employees.map(e=>e.id));
   d.employees.forEach(e=>{
-    if(!ROLES.includes(e.role)) e.role = "employee";
+    if(!e.role) e.role = "employee";                                   // a role this build does not know is left alone, never rewritten
     if(e.reportsTo && (!ids.has(e.reportsTo) || e.reportsTo===e.id)) e.reportsTo = "";
     if(e.color && !PALETTE.some(c=>c[0]===e.color)) e.color = "";
     if(e.crew !== "" && !SHIFTS.includes(e.crew)) e.crew = OFFICE.includes(e.role) ? "" : "day";
@@ -1272,7 +1301,7 @@ function canSeeEmp(id){
 }
 function canSeeJob(id){
   if(seesAll()) return true;
-  if(ME.role==="pm") return true;                      // PMs report across every PM
+  if(ME.role==="pm" || ME.role==="safety") return true;   // PMs report across every PM; the safety team posts to any job
   const j = job(id); if(!j) return false;
   if(ME.role==="foreman"){
     if(db.punches.some(p=>p.jobId===id && p.empId===ME.id)) return true;
@@ -1312,6 +1341,26 @@ function fillJobSelect(el, jobs, first, keep, allowProj){ el.innerHTML = jobOptH
 /* a filter value is a job id, or "proj:NAME" for every job in that folder */
 function jobMatch(j, v){ if(!v) return true; if(String(v).startsWith("proj:")) return !!j && jobProj(j)===String(v).slice(5); return !!j && j.id===v; }
 function jobFilterLabel(v){ if(!v) return ""; if(String(v).startsWith("proj:")) return String(v).slice(5); return (job(v)||{}).po||""; }
+/* safety postings on a job: a PTP is good for its day; a toolbox talk stays up until taken down and each man sees it once */
+function postingsFor(j){ return (j && Array.isArray(j.safety)) ? j.safety.filter(Boolean) : []; }
+function postingLive(sp, date){ date = date || D.iso(new Date()); if(!sp || !sp.url) return false; if(sp.kind==="ptp") return sp.date===date; return sp.date<=date && (!sp.until || sp.until>=date); }
+function ackedToday(empId, id, date){ return db.punches.some(p=>p.empId===empId && p.date===date && p.ack && p.ack[id]); }
+function ackedEver(empId, id){ return db.punches.some(p=>p.empId===empId && p.ack && p.ack[id]); }
+/* what this man still owes on this job right now */
+function crewOfMan(empId){ const e = emp(empId); if(!e) return ""; if(e.role==="foreman") return e.id; const f = bossOf(empId, "foreman"); return f ? f.id : ""; }
+function forCrew(sp, empId){ return !sp.foremanId || sp.foremanId===crewOfMan(empId); }
+function dueFor(empId, j, p){
+  const d = (p && p.date) || D.iso(new Date());
+  const live = postingsFor(j).filter(sp=>postingLive(sp, d) && (sp.kind==="ptp" ? !ackedToday(empId, sp.id, d) : !ackedEver(empId, sp.id)));
+  const mine = live.filter(sp=>forCrew(sp, empId));
+  if(mine.length) return mine;
+  if(postingsFor(j).some(sp=>sp.kind==="ptp" && postingLive(sp, d) && ackedToday(empId, sp.id, d))) return [];   // he already signed one of this job's PTPs today
+  return live.filter(sp=>sp.kind==="ptp" && sp.foremanId);      // lent to another crew's task: show that job's PTPs so he picks the one he is joining
+}
+function spCrewNote(sp, empId){ return sp.foremanId && sp.foremanId!==crewOfMan(empId) ? ((emp(sp.foremanId)||{}).name||"?")+"'s crew" : ""; }
+function spLabel(sp){ const t=(sp.title||"").trim(); return sp.kind==="ptp" ? (t ? "PTP: "+t : "Today's Pre-Task Plan") : "Toolbox talk: "+t; }
+/* {name}, {number}, {date} and {job} in a posted link are filled in for the man tapping it (form prefills) */
+function fillLink(url, e, j){ const d=D.iso(new Date()); return String(url||"").replace(/\{name\}/gi, encodeURIComponent(e?e.name:"")).replace(/\{number\}/gi, encodeURIComponent(e?String(e.pin||""):"")).replace(/\{date\}/gi, encodeURIComponent(D.us(d))).replace(/\{job\}/gi, encodeURIComponent(j?(j.po||""):"")); }
 /* the folder dropdown on a job card and the add row */
 function projSelHTML(attr, cur){ return '<option value="">No folder</option>'+projList().map(f=>'<option value="'+esc(f)+'"'+(f===cur?" selected":"")+'>'+esc(f)+"</option>").join("")+'<option value="__new">New folder…</option>'; }
 async function pickProj(sel, cur){
@@ -1484,11 +1533,11 @@ const roleChoices = cur => abc(ROLES).filter(r=>r!=="admin" || (ME&&ME.role==="a
 const canMarkup= () => money$();
 const TABS = {
   foreman: ["daily","weekly"],
-  super: ["daily","weekly","crew","jobs","clock","timeoff","reports","export"],
-  pm:    ["daily","weekly","crew","jobs","clock","timeoff","reports","export","settings"],
-  office:["daily","weekly","crew","jobs","clock","timeoff","reports","export"],
-  safety:["crew"],
-  admin: ["daily","weekly","crew","jobs","clock","timeoff","reports","export","settings"]
+  super: ["daily","weekly","crew","jobs","clock","timeoff","safety","reports","export"],
+  pm:    ["daily","weekly","crew","jobs","clock","timeoff","safety","reports","export","settings"],
+  office:["daily","weekly","crew","jobs","clock","timeoff","safety","reports","export"],
+  safety:["crew","safety"],
+  admin: ["daily","weekly","crew","jobs","clock","timeoff","safety","reports","export","settings"]
 };
 function applyRole(){
   const allowed = TABS[(ME&&ME.role)||"super"] || TABS.super;
@@ -1499,7 +1548,7 @@ function applyRole(){
 }
 
 /* ---------------------------------------------------------------- nav */
-const views = ["daily","weekly","crew","jobs","clock","timeoff","reports","export","settings"];
+const views = ["daily","weekly","crew","jobs","clock","timeoff","safety","reports","export","settings"];
 document.querySelectorAll("nav button").forEach(b=>{
   b.onclick = () => {
     document.querySelectorAll("nav button").forEach(x=>x.setAttribute("aria-current", x===b));
@@ -1513,6 +1562,7 @@ document.querySelectorAll("nav button").forEach(b=>{
     if(b.dataset.v==="jobs")    renderJobs();
     if(b.dataset.v==="clock")   renderClock();
     if(b.dataset.v==="timeoff") renderTimeoff();
+    if(b.dataset.v==="safety")  renderSafety();
   };
 });
 
@@ -2097,6 +2147,74 @@ function renderCrew(keepFilters){
   });
   stamp();
 }
+
+/* ---------------------------------------------------------------- safety sign-ins */
+function renderSafety(){
+  const today = D.iso(new Date()), tomorrow = D.add(today, 1);
+  const vj = visJobs().filter(j=>j.active!==false);
+  const kindUI = ()=>{ const talk = $("spKind").value==="talk"; $("spDateWrap").hidden = talk; $("spCrew").closest("label").hidden = talk; $("spTitle").placeholder = talk ? "Ladder safety" : "MV terminations (optional)"; };
+  $("spKind").onchange = kindUI; kindUI();
+  if(!$("spDate").value) $("spDate").value = new Date().getHours() >= 12 ? tomorrow : today;
+  const keep = $("spJob").value; $("spJob").innerHTML = jobOptHTML(vj, keep, "Pick a job or a folder", true);
+  if(keep && [...$("spJob").options].some(o=>o.value===keep)) $("spJob").value = keep;
+  const crewOpts = ()=>{ const v=$("spJob").value, keepC=$("spCrew").value;
+    const js = v.startsWith("proj:") ? projOf(v.slice(5), vj) : [job(v)].filter(Boolean);
+    const fids = [...new Set(js.flatMap(j=>j.foremen||[]))]; const fms = fids.map(emp).filter(Boolean).sort(byName);
+    $("spCrew").innerHTML = '<option value="">Everyone on the job</option>'+fms.map(f=>'<option value="'+f.id+'"'+(f.id===keepC?" selected":"")+'>'+esc(f.name)+"'s crew</option>").join(""); };
+  $("spJob").onchange = crewOpts; crewOpts();
+  const crewName = sp => sp.foremanId ? ((emp(sp.foremanId)||{}).name||"?")+"'s crew" : "everyone on the job";
+  const dayWord = d => d===today ? "today" : d===tomorrow ? "tomorrow" : D.us(d);
+  const row = (j, sp) => {
+    const live = postingLive(sp, today) || (sp.kind==="ptp" && sp.date > today);
+    let who = "";
+    if(sp.kind==="ptp"){
+      const ps = db.punches.filter(p=>p.date===sp.date && p.jobId===j.id && forCrew(sp, p.empId));
+      const men = [...new Set(ps.map(p=>p.empId))]; const opened = men.filter(id=>ackedToday(id, sp.id, sp.date)); const missing = men.filter(id=>!ackedToday(id, sp.id, sp.date)).map(id=>(emp(id)||{}).name||"?").sort();
+      who = sp.date > today ? "Posted for "+dayWord(sp.date)+"; the men see it when they clock in that day"
+          : men.length ? opened.length+" of "+men.length+" clocked in have opened it"+(missing.length?": still to sign "+esc(missing.slice(0,12).join(", "))+(missing.length>12?" and "+(missing.length-12)+" more":""):"") : "Nobody clocked in on it";
+    } else {
+      const since = db.punches.filter(p=>p.date>=sp.date && p.jobId===j.id && forCrew(sp, p.empId)); const men = new Set(since.map(p=>p.empId)); const seen = [...men].filter(id=>ackedEver(id, sp.id));
+      who = seen.length+" of "+men.size+" men who clocked in since "+D.us(sp.date)+" have opened it";
+    }
+    return '<div class="spitem"><span class="chip '+(live?"appr":"pend")+'">'+(sp.kind==="ptp" ? "PTP · "+dayWord(sp.date) : "Toolbox talk")+'</span>'+
+      '<strong>'+esc((sp.title||"").trim() || (sp.kind==="ptp"?"Pre-Task Plan":""))+'</strong>'+
+      '<span class="chip">'+esc(crewName(sp))+'</span>'+
+      '<a class="lnk" href="'+esc(sp.url)+'" target="_blank" rel="noopener">'+esc(sp.url.length>48?sp.url.slice(0,48)+"…":sp.url)+'</a>'+
+      '<span class="mini">posted '+D.us(sp.at ? sp.at.slice(0,10) : sp.date)+(sp.by?" by "+esc(sp.by):"")+'</span>'+
+      '<span class="mini">'+who+'</span>'+
+      '<button class="x" data-spdel="'+j.id+'|'+esc(sp.id)+'" title="Take it down">&times;</button></div>';
+  };
+  const fl = projList(vj), loose = vj.filter(j=>!jobProj(j));
+  const card = j => { const sps = postingsFor(j).slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).filter(sp=>postingLive(sp,today) || sp.date>=D.add(today,-3));
+    const nT = postingsFor(j).filter(sp=>sp.kind==="ptp" && sp.date===today).length, nN = postingsFor(j).filter(sp=>sp.kind==="ptp" && sp.date===tomorrow).length;
+    const hadPtp = postingsFor(j).some(sp=>sp.kind==="ptp");
+    return '<div class="spjob"><h4>'+esc(j.po)+' · '+esc(j.name)+
+      (nT?' <span class="chip appr">'+nT+' PTP'+(nT===1?"":"s")+' for today</span>':hadPtp&&new Date().getHours()<12?' <span class="chip deny">No PTP for today</span>':"")+
+      (nN?' <span class="chip appr">'+nN+' for tomorrow</span>':hadPtp&&new Date().getHours()>=12?' <span class="chip deny">Nothing for tomorrow yet</span>':"")+'</h4>'+
+      (sps.length ? sps.map(sp=>row(j, sp)).join("") : '<div class="mini">Nothing posted. Men clock in here without a sign-in step.</div>')+"</div>"; };
+  $("spOut").innerHTML = (fl.map(f=>'<h3 class="jfold">'+esc(f)+'</h3>'+projOf(f,vj).map(card).join("")).join(""))+(loose.length?(fl.length?'<h3 class="jfold">No folder</h3>':"")+loose.map(card).join(""):"");
+  $("spOut").querySelectorAll("[data-spdel]").forEach(el=>el.onclick=async ()=>{ const [jid,id]=el.dataset.spdel.split("|"); const j=job(jid); if(!j) return;
+    if(!await ask("Take this down? Men will no longer be asked to sign it.", true)) return;
+    j.safety = postingsFor(j).filter(sp=>sp.id!==id); save(); renderSafety(); });
+  stamp();
+}
+$("spAdd").onclick = ()=>{
+  const kind = $("spKind").value, title = $("spTitle").value.trim(), v = $("spJob").value, fid = $("spCrew").value; let url = $("spUrl").value.trim();
+  if(!url) return $("spUrl").focus();
+  if(!/^https?:\/\//i.test(url)) url = "https://"+url;
+  if(!v) return tell("Pick the job or the folder it goes on.");
+  if(kind==="talk" && !title) return $("spTitle").focus();
+  const today = D.iso(new Date());
+  const date = kind==="ptp" ? $("spDate").value : today;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) return tell("Pick the day the PTP is for.");
+  const targets = v.startsWith("proj:") ? projOf(v.slice(5), visJobs().filter(j=>j.active!==false)) : [job(v)].filter(Boolean);
+  if(!targets.length) return tell("No jobs in that folder.");
+  const sp = {id:uid(), kind, url, title, date, foremanId: kind==="ptp" ? (fid||"") : "", by: ME?ME.name:"", at:stampNow()};   // one id across the folder: a man signs a talk once
+  const old = D.add(today,-30);
+  targets.forEach(j=>{ j.safety = postingsFor(j).filter(x=>!(x.kind==="ptp" && x.date<old) && !(kind==="ptp" && x.kind==="ptp" && x.date===date && (x.foremanId||"")===(fid||"") && x.url===url)).concat([Object.assign({}, sp)]); });
+  $("spUrl").value = ""; $("spTitle").value = ""; save(); renderSafety();
+  tell((kind==="ptp" ? "PTP posted for "+(date===today?"today":date===D.add(today,1)?"tomorrow":D.us(date))+" on " : "Toolbox talk posted on ")+targets.length+" job"+(targets.length===1?"":"s")+(fid?" for "+((emp(fid)||{}).name||"")+"'s crew":"")+". The men see it when they clock in that day.");
+};
 
 /* ---------------------------------------------------------------- jobs + PMs */
 $("pAdd").onclick = ()=>{
@@ -3081,7 +3199,8 @@ function kSyncTag(){
   const el=$("kSync"); if(!el) return;
   const cfg=sbCfg();
   let text, color;
-  if(!cfg.url || !cfg.key){ text="SYNC NOT SET UP: punches stay on this iPad only. Tell the office."; color="#b42318"; }
+  if(!cfg.url || !cfg.key){ if(typeof SAMPLE_HINT!=="undefined" && SAMPLE_HINT){ el.textContent="Sample: nothing here syncs anywhere."; el.style.cssText="color:var(--ink-2);font-size:12px;font-weight:500;text-align:center;padding:0 16px"; return; }
+    text="SYNC NOT SET UP: punches stay on this iPad only. Tell the office."; color="#b42318"; }
   else if(SB.on){
     const stuck = SB.dirty && SB.dirty.size && SB.last && (Date.now()-new Date(SB.last).getTime() > 10*60000);
     text = stuck ? "Syncing as "+(SB.label||"")+" · "+SB.dirty.size+" change"+(SB.dirty.size===1?"":"s")+" waiting to send"
@@ -3528,7 +3647,7 @@ function rerender(){
   if(editing() || document.querySelector("dialog[open]")) return;
   const v = (document.querySelector('nav button[aria-current="true"]')||{}).dataset; const cur = v && v.v;
   try{
-    if(cur==="daily") renderDaily(); else if(cur==="weekly") renderWeekly(); else if(cur==="clock") renderClock();
+    if(cur==="daily") renderDaily(); else if(cur==="weekly") renderWeekly(); else if(cur==="clock") renderClock(); else if(cur==="safety") renderSafety();
     else if(cur==="timeoff") renderTimeoff(); else if(cur==="crew") renderCrew(); else if(cur==="jobs") renderJobs();
     refreshBadge(); stamp();
   }catch(e){}
@@ -3716,8 +3835,10 @@ function drawK(){
       (op
         ? '<div class="onclock"><strong>On the clock</strong><br>'+esc((jobProj(j)?jobProj(j)+" · ":"")+crewJobTitle(j))+
           "<br>Since "+(op.date===T.dateOf(T.now())?"":D.us(op.date)+" ")+T.clock(op.tin)+"</div>"+
-          '<button class="b red big" data-k="out">Clock out</button>'
+          '<button class="b red big" data-k="out">Clock out</button>'+
+          '<button class="b ghost big" data-k="move">Move to another job</button>'
       : '<button class="b big" data-k="jobs">Clock in on a job</button>')+
+      (op && j && dueFor(K.empId, j, op).length ? '<button class="b red big" data-k="safety">Sign today\'s '+(dueFor(K.empId, j, op).some(x=>x.kind==="ptp")?"PTP":"toolbox talk")+'</button>' : "")+
       '<button class="b ghost big" data-k="off">Request time off</button>'+
       '<button class="b ghost big" data-k="mine">My time off</button>'+
       ((OFFICE.includes(e.role)||e.role==="foreman") ? '<button class="b ghost big" data-k="office">'+(e.role==="foreman"?"Daily and weekly sheets":"Open the office")+"</button>" : "")+
@@ -3729,10 +3850,12 @@ function drawK(){
     const tabs = fl.concat(fl.length && loose.length ? ["*"] : []);          // "*": jobs in no folder
     if(tabs.length && !tabs.includes(K.proj)) K.proj = lastProj(K.empId, tabs) || tabs[0];
     const list = (tabs.length ? (K.proj==="*" ? loose : projOf(K.proj, all)) : all).slice().sort((a,b)=>ABC(crewJobTitle(a),crewJobTitle(b)));
-    const btn = j => { let f=jobForemen(j); if(myF && f.some(x=>x.id===myF.id)) f=[myF]; return '<button class="jobbtn" data-j="'+j.id+'">'+esc(crewJobTitle(j))+
+    const onJob = (openPunch(K.empId)||{}).jobId || "";
+    const btn = j => { let f=jobForemen(j); if(myF && f.some(x=>x.id===myF.id)) f=[myF]; const cur = j.id===onJob; return '<button class="jobbtn'+(cur?" cur":"")+'" data-j="'+j.id+'">'+esc(crewJobTitle(j))+(cur?'<span class="nowtag">On this job now</span>':"")+
         (f.length?"<small>Foreman: "+esc(f.map(x=>x.name).join(", "))+"</small>":"")+"</button>"; };
-    c.innerHTML = '<h3>'+(tabs.length>1 ? "Pick your project, then your job" : fl.length===1 ? esc(fl[0])+": pick your job" : "Pick your job")+'</h3><div class="k-body">'+
-      (tabs.length>1 ? '<div class="ktabs">'+tabs.map(t=>'<button data-fold="'+esc(t)+'" class="'+(t===K.proj?"on":"")+'">'+(t==="*"?"Other jobs":esc(t))+"<small>"+(t==="*"?loose:projOf(t,all)).length+" job"+((t==="*"?loose:projOf(t,all)).length===1?"":"s")+"</small></button>").join("")+"</div>" : "")+
+    c.innerHTML = '<h3>'+(K.moving?"Moving: ":"")+(tabs.length>1 ? "Pick your project, then your job" : fl.length===1 ? esc(fl[0])+": pick your job" : "Pick your job")+'</h3><div class="k-body">'+
+      (K.moving ? '<div class="onclock">You stay on the clock: this closes your time on '+esc(crewJobTitle(job((openPunch(K.empId)||{}).jobId)))+' and starts it on the job you pick.</div>' : "")+
+      (tabs.length>1 ? '<div class="ktabs">'+tabs.map(t=>'<button data-fold="'+esc(t)+'" class="'+(t===K.proj?"on":"")+'">'+((onJob && (t==="*" ? loose : projOf(t,all)).some(j=>j.id===onJob))?'<span class="dot"></span>':"")+(t==="*"?"Other jobs":esc(t))+"<small>"+(t==="*"?loose:projOf(t,all)).length+" job"+((t==="*"?loose:projOf(t,all)).length===1?"":"s")+"</small></button>").join("")+"</div>" : "")+
       (list.length ? list.map(btn).join("") : '<div class="empty">No jobs for you yet. See your foreman.</div>')+
       '<button class="b ghost big" data-k="back">Back</button></div>';
   }
@@ -3763,6 +3886,15 @@ function drawK(){
   else if(K.screen==="done"){
     c.innerHTML = '<h3>&nbsp;</h3><div class="k-body"><p class="k-msg">'+esc(K.msg)+"</p>"+
       '<button class="b big" data-k="home">Done</button></div>';
+  }
+  else if(K.screen==="safety"){
+    const j = job(K.sj), p = db.punches.find(x=>x.id===K.sp), done = {}; (K.acked||[]).forEach(id=>done[id]=true);   // only what he tapped on this screen shows as done
+    const due = dueFor(K.empId, j, p);
+    const items = postingsFor(j).filter(sp=>postingLive(sp, p&&p.date) && (due.includes(sp) || done[sp.id])).sort((a,b)=>(done[a.id]?1:0)-(done[b.id]?1:0));
+    c.innerHTML = '<h3>'+esc(e.name)+'</h3><div class="k-body"><p class="k-msg">'+esc(K.msg)+"</p>"+
+      '<div class="onclock"><strong>'+(p && p.tout ? "Before you go:" : "Before you start:")+'</strong> open '+(items.length===1?"this":"each one")+', find your name and sign in. The keypad clears itself when you tap it.</div>'+
+      items.map(sp=>'<a class="b big'+(done[sp.id]?" done":"")+'" href="'+esc(fillLink(sp.url, e, j))+'" target="_blank" rel="noopener" data-s="'+esc(sp.id)+'" data-k="ack">'+(done[sp.id]?"&#10003; ":"")+esc(spLabel(sp))+'<small>'+(done[sp.id]?"Opened":"Tap to open and sign")+(spCrewNote(sp, K.empId)?" · "+esc(spCrewNote(sp, K.empId)):"")+"</small></a>").join("")+
+      '<button class="b ghost big" data-k="home">'+(due.length?"Skip for now":"Done")+'</button></div>';
   }
   wireK();
 }
@@ -3808,9 +3940,12 @@ function wireK(){
           else { K.empId=e.id; K.pin=""; K.msg=""; K.screen="menu"; drawK(); const who=e.id; freshPunches(who).then(()=>{ if(K.empId===who && K.screen==="menu") drawK(); }); }
           break;
         }
-        case "jobs": K.screen="jobs"; K.proj=null; drawK(); break;
+        case "jobs": K.screen="jobs"; K.proj=null; K.moving=false; drawK(); break;
+        case "move": K.screen="jobs"; K.proj=null; K.moving=true; drawK(); break;
         case "office": { const e=emp(K.empId); K.pin=""; K.msg=""; enterOffice(e); break; }
         case "back": K.screen="menu"; drawK(); break;
+        case "safety": { const op=openPunch(K.empId); if(!op) break; K.sj=op.jobId; K.sp=op.id; K.acked=[]; K.msg="On the clock since "+T.clock(op.tin)+"."; K.screen="safety"; drawK(); break; }
+        case "ack": break;                                   // handled on the link itself
         case "home": K.screen="pin"; K.empId=null; K.pin=""; K.msg=""; drawK(); break;
         case "done": K.screen="pin"; K.empId=null; K.pin=""; drawK(); break;
         case "mine": K.screen="mine"; drawK(); break;
@@ -3821,12 +3956,14 @@ function wireK(){
             freshPunches(who).then(()=>{ const p2=clockOut(who); const j2=p2?job(p2.jobId):null;
               if(p2 && geoMode()!=="off") (K.geoP || geoNow()).then(fix=>{ p2.geoOut = geoStamp(j2, fix); save(); });
               K.msg = p2 ? "Clocked out at "+T.clock(p2.tout)+".  "+hrs(p2.hours)+" hours on "+(j2?crewJobTitle(j2):"the job")+"." : "You were not clocked in.";
-              K.empId=who; K.screen="done"; drawK(); });
+              K.empId=who; if(p2 && j2 && dueFor(who, j2, p2).length){ K.sj=j2.id; K.sp=p2.id; K.acked=[]; K.screen="safety"; drawK(); return; }
+              K.screen="done"; drawK(); });
             break; }
           const j = p ? job(p.jobId) : null;
           if(p && geoMode()!=="off") (K.geoP || geoNow()).then(fix=>{ p.geoOut = geoStamp(j, fix); save(); });
           K.msg = p ? "Clocked out at "+T.clock(p.tout)+".  "+hrs(p.hours)+" hours on "+(j?crewJobTitle(j):"the job")+"."+(p.long?" That is over 14 hours since you clocked in, so the office will check it.":"")
                   : "You were not clocked in.";
+          if(p && j && dueFor(K.empId, j, p).length){ K.sj=j.id; K.sp=p.id; K.acked=[]; K.screen="safety"; drawK(); break; }   // posted after he clocked in: catch him on the way out
           K.screen="done"; drawK(); break;
         }
         case "pm": { const d=D.parse(K.calMon+"-01"); d.setMonth(d.getMonth()-1); K.calMon=D.iso(d).slice(0,7); drawK(); break; }
@@ -3860,12 +3997,23 @@ function wireK(){
     }
     await fresh;
     K.empId = empId;
+    let moved = null;
+    if(K.moving){ const op = openPunch(K.empId);
+      if(op && op.jobId===el.dataset.j){ K.msg = "You are already on "+crewJobTitle(j)+"."; K.moving=false; K.screen="done"; drawK(); return; }
+      moved = clockOut(K.empId); if(moved && mode!=="off") (K.geoP || geoNow()).then(fix=>{ moved.geoOut = geoStamp(job(moved.jobId), fix); save(); }); K.moving=false; }
     const p = clockIn(K.empId, el.dataset.j);
     if(p && g){ p.geoIn = g; save(); }
     else if(p && mode!=="off"){ const gp = K.geoP || geoNow(); gp.then(fix=>{ p.geoIn = geoStamp(j, fix); save(); }); }
-    K.msg = p ? "Clocked in on "+crewJobTitle(j)+" at "+T.clock(p.tin)+"." : "You are already clocked in.";
+    K.msg = p ? (moved ? "Moved to "+crewJobTitle(j)+" at "+T.clock(p.tin)+". "+hrs(moved.hours)+" hours on "+crewJobTitle(job(moved.jobId))+"." : "Clocked in on "+crewJobTitle(j)+" at "+T.clock(p.tin)+".") : "You are already clocked in.";
+    if(p && dueFor(K.empId, j, p).length){ K.sj = j.id; K.sp = p.id; K.acked = []; K.screen="safety"; drawK(); return; }   // PTP or toolbox talk to sign first
     K.screen="done"; drawK();
   });
+  card.querySelectorAll("[data-k=\"ack\"]").forEach(el=>el.addEventListener("click", ()=>{             // the link opens in a new tab; here we only stamp and reset
+    const p = db.punches.find(x=>x.id===K.sp); if(p){ p.ack = Object.assign({}, p.ack||{}, {[el.dataset.s]: stampNow()}); save(); }
+    K.acked = (K.acked||[]).concat([el.dataset.s]);
+    const left = dueFor(K.empId, job(K.sj), p).length;
+    setTimeout(()=>{ if(left){ drawK(); } else { K.screen="pin"; K.empId=null; K.pin=""; K.msg=""; drawK(); } }, 150);
+  }));
   card.querySelectorAll("[data-d]").forEach(el=>el.onclick=()=>{
     const d = el.dataset.d;
     if(!K.selA || (K.selA && K.selB)){ K.selA=d; K.selB=null; }
@@ -4013,7 +4161,7 @@ function renderClock(){
           '<td class="tm"><div class="tms"><input type="time" data-pp="'+p.id+'" data-f="tin" value="'+T.hm(p.tin)+'">'+
           (p.tout?'<input type="time" data-pp="'+p.id+'" data-f="tout" value="'+T.hm(p.tout)+'">':'<button class="b ghost sm" data-pclose="'+p.id+'">Clock out now</button>')+"</div></td>"+
           '<td><input type="checkbox" data-pp="'+p.id+'" data-f="meal" title="Unpaid meal taken"'+(p.noMeal?"":" checked")+"></td>"+
-          '<td class="loc">'+geoCell(p)+"</td>"+
+          '<td class="loc">'+geoCell(p)+(p.ack && Object.keys(p.ack).length ? '<span class="chip appr" title="Opened the safety sign-in">Safety &#10003;</span>' : "")+"</td>"+
           '<td class="n num">'+(p.tout?hrs(p.hours):"")+"</td>"+($$?'<td class="n num">'+(p.tout?money(p.hours*r):"")+"</td>":"")+
           '<td style="width:26px"><button class="x" data-pdel="'+p.id+'">&times;</button></td></tr>';
       };
@@ -4140,7 +4288,9 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v34";
+const APP_VERSION = "v41";
+const SAMPLE_HINT = "";
+if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
 function verNum(v){ const m=String(v||"").match(/v(\d+)/); return m?+m[1]:0; }
 function safeToReload(){
