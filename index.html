@@ -194,6 +194,7 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
 .ktabs button{flex:1 1 120px;padding:12px 10px;border:1.5px solid var(--line);background:var(--tile);color:var(--ink);border-radius:12px;font-family:"Barlow Semi Condensed",sans-serif;font-size:19px;font-weight:600;cursor:pointer}
 .ktabs button small{display:block;font-family:Inter,sans-serif;font-weight:400;font-size:12px;color:var(--ink-2);margin-top:2px}
 .ktabs button.on{background:var(--btn);color:var(--btn-ink);border-color:var(--btn)}
+button.b.ghost.on{background:var(--btn);color:var(--btn-ink);border-color:var(--btn)}
 .ktabs button.on small{color:#c9d3df}
 .jfold{display:flex;align-items:baseline;gap:10px;margin:18px 0 2px;padding-bottom:4px;border-bottom:2px solid var(--line);font-family:"Barlow Semi Condensed",sans-serif;font-size:20px;font-weight:700;color:var(--navy)}
 .jfold .mini{font-weight:400}
@@ -454,10 +455,11 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
         <label class="f" style="flex:1 1 300px">Sign-in link<input type="text" id="spUrl" placeholder="Paste the link the men sign on" autocomplete="off"></label>
         <label class="f" style="flex:1 1 200px">On<select id="spJob"></select></label>
         <label class="f" style="flex:1 1 180px">Crew<select id="spCrew"><option value="">Everyone on the job</option></select></label>
-        <label class="f" id="spDateWrap">For<input type="date" id="spDate"></label>
+        <label class="f" id="spDateWrap">Work day<input type="date" id="spDate"></label>
+        <span id="spDays" style="display:flex;gap:6px;align-self:flex-end;padding-bottom:1px"><button class="b ghost sm" data-spday="0">Today</button><button class="b ghost sm" data-spday="1">Tomorrow</button></span>
         <button class="b" id="spAdd">Post it</button>
       </div>
-      <p class="hint">A <strong>PTP</strong> is for one work day and, usually, one crew: paste the link, pick the job, the foreman whose crew it is (or everyone on the job), and the day it is for. The date starts on tomorrow after noon, since the links are generated the evening before. A man is shown the PTPs posted for his crew on the day he clocks in. A <strong>toolbox talk</strong> stays up until you take it down, and each man sees it once (title required). Pick a folder under <em>On</em> to post the same link to every PO in it. If the form can take the name in its address, write <code>{name}</code> where it goes (also <code>{number}</code>, <code>{date}</code>, <code>{job}</code>) and the app fills in the man tapping it. When a man clocks in on that job the keypad shows him the link; tapping it opens the sign-in page, marks him as opened it, and puts the keypad back on the number pad.</p>
+      <p class="hint">A <strong>PTP</strong> is for one work day and, usually, one crew: paste the link, pick the job, the foreman whose crew it is (or everyone on the job), and the day it is for. The date starts on tomorrow after noon, since the links are generated the evening before. A man is shown the PTPs posted for his crew on the day he clocks in. A foreman can post here too, for his own crew. A <strong>toolbox talk</strong> stays up until you take it down, and each man sees it once (title required). Pick a folder under <em>On</em> to post the same link to every PO in it. If the form can take the name in its address, write <code>{name}</code> where it goes (also <code>{number}</code>, <code>{date}</code>, <code>{job}</code>) and the app fills in the man tapping it. When a man clocks in on that job the keypad shows him the link; tapping it opens the sign-in page, marks him as opened it, and puts the keypad back on the number pad.</p>
       <div id="spOut"></div>
     </div>
   </div>
@@ -1532,7 +1534,7 @@ const canRoles = () => !!ME && (ME.role==="admin" || ME.role==="office");
 const roleChoices = cur => abc(ROLES).filter(r=>r!=="admin" || (ME&&ME.role==="admin") || cur==="admin");
 const canMarkup= () => money$();
 const TABS = {
-  foreman: ["daily","weekly"],
+  foreman: ["daily","weekly","safety"],
   super: ["daily","weekly","crew","jobs","clock","timeoff","safety","reports","export"],
   pm:    ["daily","weekly","crew","jobs","clock","timeoff","safety","reports","export","settings"],
   office:["daily","weekly","crew","jobs","clock","timeoff","safety","reports","export"],
@@ -2155,14 +2157,18 @@ function renderCrew(keepFilters){
 function renderSafety(){
   const today = D.iso(new Date()), tomorrow = D.add(today, 1);
   const vj = visJobs().filter(j=>j.active!==false);
-  const kindUI = ()=>{ const talk = $("spKind").value==="talk"; $("spDateWrap").hidden = talk; $("spCrew").closest("label").hidden = talk; $("spTitle").placeholder = talk ? "Ladder safety" : "MV terminations (optional)"; };
+  const kindUI = ()=>{ const talk = $("spKind").value==="talk"; $("spDateWrap").hidden = talk; $("spDays").hidden = talk; $("spCrew").closest("label").hidden = talk; $("spTitle").placeholder = talk ? "Ladder safety" : "MV terminations (optional)"; };
   $("spKind").onchange = kindUI; kindUI();
   if(!$("spDate").value) $("spDate").value = new Date().getHours() >= 12 ? tomorrow : today;
+  const dayBtns = ()=>{ document.querySelectorAll("[data-spday]").forEach(b=>{ const d = D.add(today, +b.dataset.spday); b.classList.toggle("on", $("spDate").value===d); b.onclick = ()=>{ $("spDate").value = d; dayBtns(); }; }); };
+  $("spDate").onchange = dayBtns; dayBtns();
   const keep = $("spJob").value; $("spJob").innerHTML = jobOptHTML(vj, keep, "Pick a job or a folder", true);
   if(keep && [...$("spJob").options].some(o=>o.value===keep)) $("spJob").value = keep;
   const crewOpts = ()=>{ const v=$("spJob").value, keepC=$("spCrew").value;
     const js = v.startsWith("proj:") ? projOf(v.slice(5), vj) : [job(v)].filter(Boolean);
     const fids = [...new Set(js.flatMap(j=>j.foremen||[]))]; const fms = fids.map(emp).filter(Boolean).sort(byName);
+    if(ME && ME.role==="foreman"){ $("spCrew").innerHTML = '<option value="'+ME.id+'">My crew ('+esc(ME.name)+")</option>"; $("spCrew").disabled = true; return; }   // a foreman posts for his own crew only
+    $("spCrew").disabled = false;
     $("spCrew").innerHTML = '<option value="">Everyone on the job</option>'+fms.map(f=>'<option value="'+f.id+'"'+(f.id===keepC?" selected":"")+'>'+esc(f.name)+"'s crew</option>").join(""); };
   $("spJob").onchange = crewOpts; crewOpts();
   const crewName = sp => sp.foremanId ? ((emp(sp.foremanId)||{}).name||"?")+"'s crew" : "everyone on the job";
@@ -2188,7 +2194,8 @@ function renderSafety(){
       '<button class="x" data-spdel="'+j.id+'|'+esc(sp.id)+'" title="Take it down">&times;</button></div>';
   };
   const fl = projList(vj), loose = vj.filter(j=>!jobProj(j));
-  const card = j => { const sps = postingsFor(j).slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).filter(sp=>postingLive(sp,today) || sp.date>=D.add(today,-3));
+  const mineOnly = sp => !(ME && ME.role==="foreman") || !sp.foremanId || sp.foremanId===ME.id;      // a foreman sees his crew's and the job-wide ones
+  const card = j => { const sps = postingsFor(j).slice().sort((a,b)=>(b.date||"").localeCompare(a.date||"")).filter(sp=>mineOnly(sp) && (postingLive(sp,today) || sp.date>=D.add(today,-3)));
     const nT = postingsFor(j).filter(sp=>sp.kind==="ptp" && sp.date===today).length, nN = postingsFor(j).filter(sp=>sp.kind==="ptp" && sp.date===tomorrow).length;
     const hadPtp = postingsFor(j).some(sp=>sp.kind==="ptp");
     return '<div class="spjob"><h4>'+esc(j.po)+' · '+esc(j.name)+
@@ -2210,13 +2217,14 @@ $("spAdd").onclick = ()=>{
   const today = D.iso(new Date());
   const date = kind==="ptp" ? $("spDate").value : today;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) return tell("Pick the day the PTP is for.");
+  if(kind==="ptp" && date < today) return tell("That work day ("+D.us(date)+") is already past. Pick today or a day ahead.");
   const targets = v.startsWith("proj:") ? projOf(v.slice(5), visJobs().filter(j=>j.active!==false)) : [job(v)].filter(Boolean);
   if(!targets.length) return tell("No jobs in that folder.");
-  const sp = {id:uid(), kind, url, title, date, foremanId: kind==="ptp" ? (fid||"") : "", by: ME?ME.name:"", at:stampNow()};   // one id across the folder: a man signs a talk once
+  const sp = {id:uid(), kind, url, title, date, foremanId: kind==="ptp" ? ((ME && ME.role==="foreman") ? ME.id : (fid||"")) : "", by: ME?ME.name:"", at:stampNow()};   // one id across the folder: a man signs a talk once
   const old = D.add(today,-30);
   targets.forEach(j=>{ j.safety = postingsFor(j).filter(x=>!(x.kind==="ptp" && x.date<old) && !(kind==="ptp" && x.kind==="ptp" && x.date===date && (x.foremanId||"")===(fid||"") && x.url===url)).concat([Object.assign({}, sp)]); });
   $("spUrl").value = ""; $("spTitle").value = ""; save(); renderSafety();
-  tell((kind==="ptp" ? "PTP posted for "+(date===today?"today":date===D.add(today,1)?"tomorrow":D.us(date))+" on " : "Toolbox talk posted on ")+targets.length+" job"+(targets.length===1?"":"s")+(fid?" for "+((emp(fid)||{}).name||"")+"'s crew":"")+". The men see it when they clock in that day.");
+  tell((kind==="ptp" ? "PTP posted for "+(date===today?"today, ":date===D.add(today,1)?"tomorrow, ":"")+D.us(date)+" on " : "Toolbox talk posted on ")+targets.length+" job"+(targets.length===1?"":"s")+(fid?" for "+((emp(fid)||{}).name||"")+"'s crew":"")+". The men see it when they clock in that day.");
 };
 
 /* ---------------------------------------------------------------- jobs + PMs */
@@ -4291,7 +4299,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v42";
+const APP_VERSION = "v43";
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
