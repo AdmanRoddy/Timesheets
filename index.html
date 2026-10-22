@@ -192,6 +192,8 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
 .jobbtn small{display:block;font-family:Inter,sans-serif;font-weight:400;color:var(--ink-2);font-size:13px;margin-top:3px}
 .jobbtn:active{background:var(--field)}
 .jobbtn.cur{border-color:var(--ok);background:rgba(30,122,70,.12);box-shadow:inset 4px 0 0 var(--ok)}
+.jobbtn.sel{border-color:var(--btn);box-shadow:inset 4px 0 0 var(--btn)}
+.jobbtn .nowtag.pick{background:var(--btn);color:var(--btn-ink)}
 .jobbtn .nowtag{display:inline-block;margin-left:10px;padding:2px 8px;border-radius:999px;background:var(--ok);color:#fff;font-family:Inter,sans-serif;font-size:12px;font-weight:600;vertical-align:middle}
 .ktabs button .dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--ok);margin-right:6px;vertical-align:middle}
 .ktabs{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap}
@@ -1258,12 +1260,12 @@ function dialog(msg, opts){
     if(!host){ host=document.createElement("div"); host.id="dlg"; document.body.appendChild(host); }
     const o = Object.assign({ok:"OK", cancel:null, input:false, danger:false}, opts||{});
     host.innerHTML = '<div class="dlg-back"><div class="dlg-box"><p>'+esc(msg).replace(/\n/g,"<br>")+"</p>"+
-      (o.input?'<input type="text" id="dlgIn" inputmode="'+(o.mode||"numeric")+'" autocomplete="off" autocapitalize="characters" style="width:100%;margin:8px 0 14px">':"")+
+      (o.input?'<input type="text" id="dlgIn" inputmode="'+(o.mode||"numeric")+'" autocomplete="off" autocapitalize="characters" style="width:100%;margin:8px 0 14px">':"")+(o.html||"")+
       '<div class="row" style="justify-content:flex-end">'+
       (o.cancel?'<button class="b ghost" id="dlgNo">'+esc(o.cancel)+"</button>":"")+
       '<button class="b'+(o.danger?" red":"")+'" id="dlgOk">'+esc(o.ok)+"</button></div></div></div>";
     const done = v => { host.innerHTML=""; res(v); };
-    const ok = () => done(o.input ? document.getElementById("dlgIn").value : true);
+    const ok = () => done(o.read ? o.read(host) : o.input ? document.getElementById("dlgIn").value : true);
     document.getElementById("dlgOk").onclick = ok;
     if(o.cancel) document.getElementById("dlgNo").onclick = ()=>done(o.input?null:false);
     const inp = document.getElementById("dlgIn");
@@ -1507,7 +1509,7 @@ function legBefore(p){
     .sort((a,b)=>ms(b.tout)-ms(a.tout))[0] || null;                      // strictly earlier, so the chain always runs back in time and ends
 }
 function paidSpan(p){
-  const j = job(p.jobId), raw = {tin:p.tin, tout:p.tout||null, rounded:false};
+  const j = job(p.ruleJob) || job(p.jobId), raw = {tin:p.tin, tout:p.tout||null, rounded:false};   // a split day follows the first job's rule on every leg
   if(!p.tin) return raw;
   let tin = p.tin, tout = p.tout || null;
   if(jobRound(j)){
@@ -1790,12 +1792,45 @@ function geoCell(p){
   };
   return one(p.geoIn,"In: ")+(p.geoOut?" "+one(p.geoOut,"Out: "):"");
 }
-function clockIn(empId, jobId){
+function clockIn(empId, jobId, jobs){
   if(openPunch(empId)) return null;
   const e = emp(empId);
   const p = {id:uid(), empId, jobId, shift: e && e.crew==="night" ? "night" : "day",
              date:T.dateOf(T.now()), tin:T.now(), tout:null, hours:0};
+  const many = (jobs||[]).filter((j,i,a)=>j && a.indexOf(j)===i && job(j)).slice(0,12);
+  if(many.length>1){ p.jobs = many; p.jobId = many[0]; }                 // on several POs at once: split evenly at clock-out
   db.punches.push(p); post(p); save(); return p;                        // his name goes on today's sheet right away
+}
+const canSplit = e => !!e && e.role!=="employee";                        // foremen, supers, PMs, office: the men who cover several POs
+const splitGroup = p => p && p.split ? db.punches.filter(x=>x.split===p.split && !x.__deleted).sort((a,b)=>String(a.tin).localeCompare(String(b.tin))) : [p];
+/* Split a finished punch evenly between jobs, to the half hour: each job becomes a leg with consecutive times, so the
+   half-hour rule, the once-a-day meal, the OT windows and every sheet treat it like a man who moved jobs. The first
+   leg keeps his real clock-in, the last his real clock-out; the odd half hour goes to the first jobs. */
+function splitLegs(p, jobs){
+  jobs = (jobs||p.jobs||[]).filter((j,i,a)=>j && a.indexOf(j)===i && job(j)).slice(0,12);
+  delete p.jobs;
+  if(jobs.length===1) p.jobId = jobs[0];
+  if(jobs.length<2 || !p.tout){ p.hours = punchHours(p); return [p]; }
+  p.jobId = jobs[0]; p.ruleJob = jobs[0];                               // one man, one day: the first job's half-hour rule covers every leg
+  const whole = punchHours(p), N = jobs.length, sp = paidSpan(p), S = ms(sp.tin), E = ms(sp.tout);
+  const after = +db.settings.mealAfter||0, meal = mealHrs(p, (E-S)/3600000);
+  const base = Math.floor((whole/N)/0.5)*0.5; let left = whole - base*N; const shares = [];
+  for(let k=0;k<N;k++){ let x=base; if(left>=0.5-1e-9){ x+=0.5; left-=0.5; } shares.push(x); }
+  shares[N-1] += Math.max(0, whole - shares.reduce((a,b)=>a+b,0));     // a day that is not whole half hours: the last job takes the minutes
+  const gid = p.id, realOut = p.tout, legs = [];
+  let at = S, cum = 0, mealDone = false;
+  for(let k=0;k<N;k++){
+    const leg = k ? {id:uid(), empId:p.empId, jobId:jobs[k], shift:p.shift, date:p.date, tin:new Date(at).toISOString(), tout:null, hours:0} : p;
+    leg.split = gid; leg.ruleJob = jobs[0];
+    let span = shares[k];
+    if(!mealDone && meal>0 && cum + shares[k] + meal >= after - 1e-9){ span += meal; mealDone = true; }   // the meal sits in this leg
+    at += span*3600000; cum += span;
+    leg.tout = k===N-1 ? realOut : new Date(at).toISOString();
+    if(k) db.punches.push(leg);
+    legs.push(leg);
+  }
+  legs.forEach(l=>{ l.hours = punchHours(l); });                         // in order: each leg knows the legs before it
+  return legs;
 }
 function clockOut(empId){
   const opens = db.punches.filter(x=>x.empId===empId && !x.tout).sort((a,b)=>String(a.tin).localeCompare(String(b.tin)));
@@ -1804,7 +1839,16 @@ function clockOut(empId){
   p.tout = T.now(); p.hours = punchHours(p);
   if((new Date(p.tout)-new Date(p.tin)) > 14*3600000) p.long = true; else delete p.long;   // forgot to clock out: the office gets a flag
   delete p.noLine;                                                                          // a name the office took off while he was on the clock comes back with his hours
+  if(p.jobs && p.jobs.length>1){ unpost(p); const legs = splitLegs(p); legs.forEach(post); save(); return legs[legs.length-1]; }
   post(p); save(); return p;
+}
+/* what the keypad says at clock-out: the whole day, split or not */
+function outMsg(p){
+  const grp = splitGroup(p);
+  if(grp.length<2) return "Clocked out at "+T.clock(p.tout)+".  "+hrs(p.hours)+" hours on "+(job(p.jobId)?crewJobTitle(job(p.jobId)):"the job")+"."+paidNote(p);
+  const tot = grp.reduce((a,x)=>a+(+x.hours||0),0), s0 = paidSpan(grp[0]), s1 = paidSpan(grp[grp.length-1]);
+  return "Clocked out at "+T.clock(p.tout)+".  "+hrs(tot)+" hours split between "+grp.length+" jobs: "+grp.map(x=>hrs(x.hours)+" on "+crewJobTitle(job(x.jobId))).join(", ")+"."+
+    ((s0.rounded||s1.rounded) ? " Paid "+T.clock(s0.tin)+" to "+T.clock(s1.tout)+"." : "");
 }
 
 /* ---------------------------------------------------------------- daily */
@@ -4097,7 +4141,8 @@ function drawK(){
     const j = op ? job(op.jobId) : null;
     c.innerHTML = '<h3>'+esc(e.name)+' <span class="mini">'+(e.crew?shiftName(e.crew)+" crew":"")+"</span></h3><div class=\"k-body\">"+
       (op
-        ? '<div class="onclock"><strong>On the clock</strong><br>'+esc((jobProj(j)?jobProj(j)+" · ":"")+crewJobTitle(j))+
+        ? '<div class="onclock"><strong>On the clock'+(op.jobs&&op.jobs.length>1?" · "+op.jobs.length+" jobs":"")+'</strong><br>'+
+          (op.jobs&&op.jobs.length>1 ? esc(op.jobs.map(id=>crewJobTitle(job(id))).join(" · "))+'<br><span class="mini">Your time is split evenly between them when you clock out.</span>' : esc((jobProj(j)?jobProj(j)+" · ":"")+crewJobTitle(j)))+
           "<br>Since "+(op.date===T.dateOf(T.now())?"":D.us(op.date)+" ")+T.clock(op.tin)+"</div>"+
           '<button class="b red big" data-k="out">Clock out</button>'+
           '<button class="b ghost big" data-k="move">Move to another job</button>'
@@ -4115,11 +4160,16 @@ function drawK(){
     if(tabs.length && !tabs.includes(K.proj)) K.proj = lastProj(K.empId, tabs) || tabs[0];
     const list = (tabs.length ? (K.proj==="*" ? loose : projOf(K.proj, all)) : all).slice().sort((a,b)=>ABC(crewJobTitle(a),crewJobTitle(b)));
     const onJob = (openPunch(K.empId)||{}).jobId || "";
-    const btn = j => { let f=jobForemen(j); if(myF && f.some(x=>x.id===myF.id)) f=[myF]; const cur = j.id===onJob; return '<button class="jobbtn'+(cur?" cur":"")+'" data-j="'+j.id+'">'+esc(crewJobTitle(j))+(cur?'<span class="nowtag">On this job now</span>':"")+
+    const pick = K.multi ? (K.pick||[]) : [];
+    const btn = j => { let f=jobForemen(j); if(myF && f.some(x=>x.id===myF.id)) f=[myF]; const cur = j.id===onJob, sel = pick.includes(j.id); return '<button class="jobbtn'+(cur?" cur":"")+(sel?" sel":"")+'" data-j="'+j.id+'">'+esc(crewJobTitle(j))+(cur?'<span class="nowtag">On this job now</span>':"")+(sel?'<span class="nowtag pick">'+(pick.indexOf(j.id)+1)+' of '+pick.length+'</span>':"")+
         (f.length?"<small>Foreman: "+esc(f.map(x=>x.name).join(", "))+"</small>":"")+"</button>"; };
+    const splitUi = (canSplit(me) && !K.moving) ? (K.multi
+        ? '<div class="onclock"><strong>Splitting your time</strong><br>Tap every job you will be on today, in any folder. At clock-out your hours are split evenly between them, to the half hour.'+
+          '<div class="row" style="margin-top:10px"><button class="b big" data-k="gomulti"'+(pick.length?"":" disabled")+' style="flex:2">Clock in on '+(pick.length||"…")+' job'+(pick.length===1?"":"s")+'</button><button class="b ghost big" data-k="nomulti" style="flex:1">Cancel</button></div></div>'
+        : '<button class="b ghost big" data-k="multi">Split my time between several jobs</button>') : "";
     c.innerHTML = '<h3>'+(K.moving?"Moving: ":"")+(tabs.length>1 ? "Pick your project, then your job" : fl.length===1 ? esc(fl[0])+": pick your job" : "Pick your job")+'</h3><div class="k-body">'+
-      (K.moving ? '<div class="onclock">You stay on the clock: this closes your time on '+esc(crewJobTitle(job((openPunch(K.empId)||{}).jobId)))+' and starts it on the job you pick.</div>' : "")+
-      (tabs.length>1 ? '<div class="ktabs">'+tabs.map(t=>'<button data-fold="'+esc(t)+'" class="'+(t===K.proj?"on":"")+'">'+((onJob && (t==="*" ? loose : projOf(t,all)).some(j=>j.id===onJob))?'<span class="dot"></span>':"")+(t==="*"?"Other jobs":esc(t))+"<small>"+(t==="*"?loose:projOf(t,all)).length+" job"+((t==="*"?loose:projOf(t,all)).length===1?"":"s")+"</small></button>").join("")+"</div>" : "")+
+      (K.moving ? '<div class="onclock">You stay on the clock: this closes your time on '+esc(crewJobTitle(job((openPunch(K.empId)||{}).jobId)))+' and starts it on the job you pick.</div>' : "")+splitUi+
+      (tabs.length>1 ? '<div class="ktabs">'+tabs.map(t=>'<button data-fold="'+esc(t)+'" class="'+(t===K.proj?"on":"")+'">'+((onJob && (t==="*" ? loose : projOf(t,all)).some(j=>j.id===onJob))?'<span class="dot"></span>':"")+(t==="*"?"Other jobs":esc(t))+"<small>"+(function(){ const n=(t==="*"?loose:projOf(t,all)).length, k=(t==="*"?loose:projOf(t,all)).filter(j=>pick.includes(j.id)).length; return k ? k+" of "+n+" picked" : n+" job"+(n===1?"":"s"); })()+"</small></button>").join("")+"</div>" : "")+
       (list.length ? list.map(btn).join("") : '<div class="empty">No jobs for you yet. See your foreman.</div>')+
       '<button class="b ghost big" data-k="back">Back</button></div>';
   }
@@ -4204,8 +4254,11 @@ function wireK(){
           else { K.empId=e.id; K.pin=""; K.msg=""; K.screen="menu"; drawK(); const who=e.id; freshPunches(who).then(()=>{ if(K.empId===who && K.screen==="menu") drawK(); }); }
           break;
         }
-        case "jobs": K.screen="jobs"; K.proj=null; K.moving=false; drawK(); break;
-        case "move": K.screen="jobs"; K.proj=null; K.moving=true; drawK(); break;
+        case "jobs": K.screen="jobs"; K.proj=null; K.moving=false; K.multi=false; K.pick=[]; drawK(); break;
+        case "move": K.screen="jobs"; K.proj=null; K.moving=true; K.multi=false; K.pick=[]; drawK(); break;
+        case "multi": K.multi=true; K.pick=[]; drawK(); break;
+        case "nomulti": K.multi=false; K.pick=[]; drawK(); break;
+        case "gomulti": { const picks=(K.pick||[]).filter(id=>job(id)); if(!picks.length) break; K.multi=false; K.pick=[]; kClockIn(picks[0], picks.length>1?picks:null); break; }
         case "office": { const e=emp(K.empId); K.pin=""; K.msg=""; enterOffice(e); break; }
         case "back": K.screen="menu"; drawK(); break;
         case "safety": { const op=openPunch(K.empId); if(!op) break; K.sj=op.jobId; K.sp=op.id; K.acked=[]; K.msg="On the clock since "+T.clock(op.tin)+"."; K.screen="safety"; drawK(); break; }
@@ -4219,13 +4272,13 @@ function wireK(){
           if(!p){ const who=K.empId; K.screen="locating"; drawK();
             freshPunches(who).then(()=>{ const p2=clockOut(who); const j2=p2?job(p2.jobId):null;
               if(p2 && geoMode()!=="off") (K.geoP || geoNow()).then(fix=>{ p2.geoOut = geoStamp(j2, fix); save(); });
-              K.msg = p2 ? "Clocked out at "+T.clock(p2.tout)+".  "+hrs(p2.hours)+" hours on "+(j2?crewJobTitle(j2):"the job")+"."+paidNote(p2) : "You were not clocked in.";
+              K.msg = p2 ? outMsg(p2) : "You were not clocked in.";
               K.empId=who; if(p2 && j2 && dueFor(who, j2, p2).length){ K.sj=j2.id; K.sp=p2.id; K.acked=[]; K.screen="safety"; drawK(); return; }
               K.screen="done"; drawK(); });
             break; }
           const j = p ? job(p.jobId) : null;
           if(p && geoMode()!=="off") (K.geoP || geoNow()).then(fix=>{ p.geoOut = geoStamp(j, fix); save(); });
-          K.msg = p ? "Clocked out at "+T.clock(p.tout)+".  "+hrs(p.hours)+" hours on "+(j?crewJobTitle(j):"the job")+"."+paidNote(p)+(p.long?" That is over 14 hours since you clocked in, so the office will check it.":"")
+          K.msg = p ? outMsg(p)+(p.long?" That is over 14 hours since you clocked in, so the office will check it.":"")
                   : "You were not clocked in.";
           if(p && j && dueFor(K.empId, j, p).length){ K.sj=j.id; K.sp=p.id; K.acked=[]; K.screen="safety"; drawK(); break; }   // posted after he clocked in: catch him on the way out
           K.screen="done"; drawK(); break;
@@ -4243,8 +4296,12 @@ function wireK(){
     };
   });
   card.querySelectorAll("[data-fold]").forEach(el=>el.onclick=()=>{ K.proj = el.dataset.fold; kIdle(); drawK(); });
-  card.querySelectorAll("[data-j]").forEach(el=>el.onclick=async ()=>{
-    const j = job(el.dataset.j), mode = geoMode();
+  card.querySelectorAll("[data-j]").forEach(el=>el.onclick=()=>{
+    if(K.multi){ const id=el.dataset.j; K.pick=(K.pick||[]).includes(id) ? K.pick.filter(x=>x!==id) : (K.pick||[]).concat([id]).slice(0,12); kIdle(); drawK(); return; }   // picking, not clocking in yet
+    kClockIn(el.dataset.j, null);
+  });
+  async function kClockIn(jid, picks){
+    const j = job(jid), mode = geoMode();
     const fenced = mode==="block" && j && j.site;
     const empId = K.empId;
     let g = null;
@@ -4263,19 +4320,24 @@ function wireK(){
     K.empId = empId;
     let moved = null;
     if(K.moving){ const op = openPunch(K.empId);
-      if(op && op.jobId===el.dataset.j){ K.msg = "You are already on "+crewJobTitle(j)+"."; K.moving=false; K.screen="done"; drawK(); return; }
+      if(op && op.jobId===jid){ K.msg = "You are already on "+crewJobTitle(j)+"."; K.moving=false; K.screen="done"; drawK(); return; }
       moved = clockOut(K.empId); if(moved && mode!=="off") (K.geoP || geoNow()).then(fix=>{ moved.geoOut = geoStamp(job(moved.jobId), fix); save(); }); K.moving=false; }
-    const p = clockIn(K.empId, el.dataset.j);
+    const p = clockIn(K.empId, jid, picks);
     if(p && g){ p.geoIn = g; save(); }
     else if(p && mode!=="off"){ const gp = K.geoP || geoNow(); gp.then(fix=>{ p.geoIn = geoStamp(j, fix); save(); }); }
-    K.msg = p ? (moved ? "Moved to "+crewJobTitle(j)+" at "+T.clock(p.tin)+". "+hrs(moved.hours)+" hours on "+crewJobTitle(job(moved.jobId))+"."+paidNote(moved) : "Clocked in on "+crewJobTitle(j)+" at "+T.clock(p.tin)+"."+paidNote(p)) : "You are already clocked in.";
-    if(p && dueFor(K.empId, j, p).length){ K.sj = j.id; K.sp = p.id; K.acked = []; K.screen="safety"; drawK(); return; }   // PTP or toolbox talk to sign first
+    const onWhat = p && p.jobs ? p.jobs.length+" jobs ("+p.jobs.map(id=>crewJobTitle(job(id))).join(", ")+")" : crewJobTitle(j);
+    K.msg = p ? (moved ? "Moved to "+onWhat+" at "+T.clock(p.tin)+". "+hrs(moved.hours)+" hours on "+crewJobTitle(job(moved.jobId))+"."+paidNote(moved) : "Clocked in on "+onWhat+" at "+T.clock(p.tin)+"."+paidNote(p))+
+                 (p && p.jobs ? " Your time is split evenly between them when you clock out." : "") : "You are already clocked in.";
+    K.sjs = p && p.jobs ? p.jobs.slice() : [];
+    const owe = p ? (p.jobs||[j.id]).find(id=>dueFor(K.empId, job(id), p).length) : null;
+    if(owe){ K.sj = owe; K.sp = p.id; K.acked = []; K.screen="safety"; drawK(); return; }   // PTP or toolbox talk to sign first
     K.screen="done"; drawK();
-  });
+  }
   card.querySelectorAll("[data-k=\"ack\"]").forEach(el=>el.addEventListener("click", ()=>{             // the link opens in a new tab; here we only stamp and reset
     const p = db.punches.find(x=>x.id===K.sp); if(p){ p.ack = Object.assign({}, p.ack||{}, {[el.dataset.s]: stampNow()}); save(); }
     K.acked = (K.acked||[]).concat([el.dataset.s]);
-    const left = dueFor(K.empId, job(K.sj), p).length;
+    let left = dueFor(K.empId, job(K.sj), p).length;
+    if(!left && p){ const nxt = (K.sjs||[]).find(id=>id!==K.sj && dueFor(K.empId, job(id), p).length); if(nxt){ K.sj = nxt; K.acked = []; left = 1; } }   // on several jobs: the next one's PTP
     setTimeout(()=>{ if(left){ drawK(); } else { K.screen="pin"; K.empId=null; K.pin=""; K.msg=""; drawK(); } }, 150);
   }));
   card.querySelectorAll("[data-d]").forEach(el=>el.onclick=()=>{
@@ -4427,7 +4489,10 @@ function renderClock(){
           '<td class="tm" data-l="In · Out"><div class="tms"><input type="time" data-pp="'+p.id+'" data-f="tin" value="'+T.hm(p.tin)+'">'+
           (p.tout?'<input type="time" data-pp="'+p.id+'" data-f="tout" value="'+T.hm(p.tout)+'">':'<button class="b ghost sm" data-pclose="'+p.id+'">Clock out now</button>')+"</div></td>"+
           '<td class="meal" data-l="Meal"><input type="checkbox" data-pp="'+p.id+'" data-f="meal" title="Unpaid meal taken"'+(p.noMeal?"":" checked")+"></td>"+
-          '<td class="loc">'+geoCell(p)+(p.ack && Object.keys(p.ack).length ? '<span class="chip appr" title="Opened the safety sign-in">Safety &#10003;</span>' : "")+"</td>"+
+          '<td class="loc">'+geoCell(p)+(p.ack && Object.keys(p.ack).length ? '<span class="chip appr" title="Opened the safety sign-in">Safety &#10003;</span>' : "")+
+            (p.jobs && p.jobs.length>1 ? '<span class="chip" title="'+esc(p.jobs.map(id=>(job(id)||{}).po||"?").join(", "))+'">On '+p.jobs.length+' jobs</span>' : "")+
+            (p.split ? (function(){ const g=splitGroup(p); return '<span class="chip" title="Clocked in on '+g.length+' jobs at once; the day was split evenly to the half hour">Split '+(g.indexOf(p)+1)+'/'+g.length+'</span>'; })() : "")+
+            (p.tout && !p.split && canSeeJob(p.jobId) ? ' <button class="b ghost sm" data-psplit="'+p.id+'" title="Split this punch evenly between several jobs">Split…</button>' : "")+"</td>"+
           '<td class="n num hrs" data-l="Hours">'+(p.tout?hrs(p.hours):"")+(function(){ const s=paidSpan(p); return s.rounded ? '<div class="mini" title="The job rounds to the half hour; these are the times it pays">'+(s.tout?"pays "+T.clock(s.tin)+"–"+T.clock(s.tout):"from "+T.clock(s.tin))+'</div>' : ""; })()+"</td>"+($$?'<td class="n num cost" data-l="Cost">'+(p.tout?money(p.hours*r):"")+"</td>":"")+
           '<td class="del" style="width:26px"><button class="x" data-pdel="'+p.id+'">&times;</button></td></tr>';
       };
@@ -4452,6 +4517,18 @@ function renderClock(){
       '<p class="hint">Every punch writes a line on that day\'s job form for its shift, split into Reg, OT and DT by the schedule rules. Change a time here and the daily sheet changes with it.</p>';
   $("tcOut").innerHTML = html;
   const tg=$("tcGroup"); if(tg) tg.onchange = ev=>{ try{ localStorage.setItem("adman_field_tcgroup", ev.target.value); }catch(e){} renderClock(); };
+  $("tcOut").querySelectorAll("[data-psplit]").forEach(el=>el.onclick=async ()=>{
+    const p = db.punches.find(x=>x.id===el.dataset.psplit); if(!p || !p.tout) return;
+    const jobsList = db.jobs.filter(x=>canSeeJob(x.id) && (x.active!==false || x.id===p.jobId)).slice().sort((a,b)=>ABC((jobProj(a)||"")+" "+a.po,(jobProj(b)||"")+" "+b.po));
+    const html = '<div style="max-height:50vh;overflow:auto;margin:6px 0 12px">'+jobsList.map(x=>'<label class="jact" style="white-space:normal;padding:4px 0"><input type="checkbox" data-sj="'+x.id+'"'+(x.id===p.jobId?" checked":"")+'> '+esc((jobProj(x)?jobProj(x)+" · ":"")+x.po+" · "+(x.name||""))+'</label>').join("")+'</div>';
+    const picked = await dialog(esc((emp(p.empId)||{}).name||"This man")+": split "+hrs(p.hours)+" hours ("+T.clock(p.tin)+" to "+T.clock(p.tout)+") evenly between which jobs? Each job gets a share to the half hour; the odd half hour goes to the first ones.",
+      {ok:"Split", cancel:"Cancel", html, read: host=>{ const ids=[...host.querySelectorAll("[data-sj]:checked")].map(i=>i.dataset.sj); return ids.includes(p.jobId) ? [p.jobId].concat(ids.filter(x=>x!==p.jobId)) : ids; }});   // the job he was on stays first
+    if(!picked) return;
+    if(picked.length<2) return tell("Pick at least two jobs.");
+    snapshot(true, "before splitting a punch");
+    unpost(p); const legs = splitLegs(p, picked); legs.forEach(post); save(); renderClock(); renderDaily();
+    tell("Split "+legs.length+" ways: "+legs.map(l=>hrs(l.hours)+" on "+(job(l.jobId)||{}).po).join(", ")+".");
+  });
   const rf=$("tcRefig"); if(rf) rf.onclick = async ()=>{
     const ps = db.punches.filter(p=>p.date===tcDate && (canSeeJob(p.jobId) || canSeeEmp(p.empId)) && inProj(p)).filter(stalePunch);
     if(!ps.length) return renderClock();
@@ -4561,7 +4638,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v47";
+const APP_VERSION = "v48";
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
