@@ -198,6 +198,11 @@ button.b.ghost.on{background:var(--btn);color:var(--btn-ink);border-color:var(--
 .ktabs button.on small{color:#c9d3df}
 .jfold{display:flex;align-items:baseline;gap:10px;margin:18px 0 2px;padding-bottom:4px;border-bottom:2px solid var(--line);font-family:"Barlow Semi Condensed",sans-serif;font-size:20px;font-weight:700;color:var(--navy)}
 .jfold .mini{font-weight:400}
+.shiftband{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:16px 0 8px;padding:10px 14px;border-radius:10px;background:var(--btn);color:var(--btn-ink);font-family:"Barlow Semi Condensed",sans-serif;font-size:18px;font-weight:700;letter-spacing:.03em}
+.shiftband.night{background:#3b2f6b}
+.shiftband .mini{color:inherit;opacity:.85;font-family:Inter,sans-serif;font-weight:500}
+.shiftband .spacer{flex:1}
+.shiftband button.b{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.4);color:#fff}
 .big{font-size:20px;padding:16px 26px;width:100%;margin-top:10px}
 a.b.big{display:block;text-align:center;background:var(--btn);color:var(--btn-ink);border-color:var(--btn);font-family:"Barlow Semi Condensed",sans-serif;font-weight:700;font-size:20px;padding:16px 26px;margin-top:10px;border-radius:9px}
 a.b.big.done{background:var(--ok);border-color:var(--ok)}
@@ -268,6 +273,31 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
   #tcOut .tms{min-width:118px}
 }
 @media (max-width:640px){
+  /* the tab bar wraps so every tab is on screen, and scrolls away with the page */
+  nav{position:static}
+  nav .in{flex-wrap:wrap;overflow:visible;gap:5px;padding:8px var(--pad) 4px}
+  nav button{padding:6px 10px;font-size:13px}
+  /* daily crew and material rows stack: name on top, hours underneath, totals under that */
+  .crewt thead,.matt thead,#tcOut thead{display:none}
+  .crewt,.crewt tbody,.matt,.matt tbody,#tcOut table,#tcOut tbody{display:block;min-width:0}
+  .crewt tr,.matt tr,#tcOut tbody tr:not(.grp){display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px 8px;padding:9px 0;border-bottom:1px solid var(--line-2)}
+  .crewt td,.matt td,#tcOut tbody tr:not(.grp) td{display:block;border:0;padding:0;text-align:left;min-width:0}
+  .crewt td.who,.matt td.who,#tcOut td.who,#tcOut td.tm{grid-column:1/-1}
+  .crewt td.who select,.matt td.who input,#tcOut td.who select,#tcOut td.jb select,#tcOut td.sh select{width:100%;min-width:0}
+  .crewt td[data-l]::before,.matt td[data-l]::before,#tcOut td[data-l]::before{content:attr(data-l);display:block;font-size:11px;color:var(--ink-2);margin-bottom:2px;font-family:Inter,sans-serif;font-weight:500}
+  .crewt td input.h,.matt td input.h{width:100%;min-width:0;text-align:right}
+  .crewt td.h-rt{grid-column:1}.crewt td.h-ot{grid-column:2}.crewt td.h-dt{grid-column:3}
+  .crewt td.hrs,.matt td.qty,#tcOut td.hrs{grid-column:1}
+  .crewt td.cost,.matt td.unit,#tcOut td.cost{grid-column:2}
+  .matt td.cost{grid-column:3}
+  .crewt td.del,.matt td.del,#tcOut td.del{grid-column:3;text-align:right;align-self:end}
+  .crewt td.num,.matt td.num,#tcOut td.num{font-size:16px}
+  #tcOut td.jb{grid-column:1/3}#tcOut td.sh{grid-column:3}
+  #tcOut td.meal{grid-column:1}#tcOut td.loc{grid-column:2/-1;white-space:normal}
+  #tcOut .tms{min-width:0}
+  #tcOut tbody tr.grp{display:block;padding:8px 0 2px}
+  #tcOut tbody tr.grp td{display:block;border-left:0!important;padding:6px 8px;border-radius:8px}
+  #tcOut{overflow-x:visible}
   .card>h2{font-size:17px}
   .row>label.f{flex:1 1 150px}
   .datenav{flex-basis:100%}
@@ -330,7 +360,7 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
           <button class="b ghost sm" id="dNext" aria-label="Next day">&rarr;</button>
           <button class="b ghost sm" id="dToday">Today</button>
         </span>
-        <label class="f">Shift<select id="dShift"><option value="day">Day</option><option value="night">Night</option></select></label>
+        <label class="f">Shift<select id="dShift"><option value="day">Day</option><option value="night">Night</option><option value="both">Both: day, then night</option></select></label>
         <div class="spacer"></div>
         <button class="b" id="addForm">Add job form</button>
       </div>
@@ -353,7 +383,7 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
           <label class="f">Week ending<select id="wWeek"></select></label>
           <button class="b ghost sm" id="wNext" aria-label="Next week">&rarr;</button>
         </span>
-        <label class="f">Shift<select id="wShift"><option value="day">Day</option><option value="night">Night</option></select></label>
+        <label class="f">Shift<select id="wShift"><option value="day">Day</option><option value="night">Night</option><option value="both">Both: day, then night</option></select></label>
         <label class="f">Project manager<select id="wPm"></select></label>
         <div class="spacer"></div>
         <label class="f">Add a job to this week<select id="wAddJob"></select></label>
@@ -1700,13 +1730,14 @@ $("dDate").onchange = e => {
   if(!D.ok(v)){ e.target.value = curDate; return; }
   curDate = v; renderDaily();
 };
-$("dShift").onchange = e => { curShift = okShift(e.target.value); renderDaily(); };
+$("dShift").onchange = e => { curShift = e.target.value==="both" ? "both" : okShift(e.target.value); renderDaily(); };
 $("dPrev").onclick = ()=>{ curDate = D.add(curDate,-1); $("dDate").value=curDate; renderDaily(); };
 $("dNext").onclick = ()=>{ curDate = D.add(curDate, 1); $("dDate").value=curDate; renderDaily(); };
 $("dToday").onclick= ()=>{ curDate = D.iso(new Date()); $("dDate").value=curDate; renderDaily(); };
-$("addForm").onclick = ()=>{ dayRec(curDate).forms.push(newForm(curShift)); save(); renderDaily(); };
+$("addForm").onclick = ()=>{ dayRec(curDate).forms.push(newForm(okShift(curShift))); save(); renderDaily(); };
 
-const dayForms = (date, shift) => dayRec(date).forms.filter(f=>okShift(f.shift)===okShift(shift) && (!f.jobId || canSeeJob(f.jobId)));
+const dayForms = (date, shift) => { const fs = dayRec(date).forms.filter(f=>(shift==="both" || okShift(f.shift)===okShift(shift)) && (!f.jobId || canSeeJob(f.jobId)));
+  return shift==="both" ? fs.filter(f=>okShift(f.shift)==="day").concat(fs.filter(f=>okShift(f.shift)==="night")) : fs; };
 
 function renderDaily(){
   const cfg = sbCfg();
@@ -1715,7 +1746,7 @@ function renderDaily(){
     ? '<div class="flag"><strong>Not syncing.</strong> Supabase is set up but this device is not connected, so anything punched on the tablets will not show here. Settings → Sync → Connect.</div>'
   : "";
   const forms = dayForms(curDate, curShift);
-  $("dayTag").textContent = D.long(curDate)+"  ·  "+shiftName(curShift)+" shift  ·  week ending "+D.us(D.weekEnd(curDate));
+  $("dayTag").textContent = D.long(curDate)+"  ·  "+(curShift==="both" ? "Day and night shifts" : shiftName(curShift)+" shift")+"  ·  week ending "+D.us(D.weekEnd(curDate));
   renderFlags();
   const ub = $("undoBar");
   if(ub){
@@ -1737,13 +1768,20 @@ function renderDaily(){
 
   const host = $("forms");
   if(!forms.length){
-    const open = db.punches.filter(p=>!p.tout && p.date===curDate && okShift(p.shift)===curShift);
-    host.innerHTML = '<div class="card"><div class="empty">No '+shiftName(curShift).toLowerCase()+'-shift job forms yet for this day.'+
+    const open = db.punches.filter(p=>!p.tout && p.date===curDate && (curShift==="both" || okShift(p.shift)===curShift));
+    host.innerHTML = '<div class="card"><div class="empty">No '+(curShift==="both"?"":shiftName(curShift).toLowerCase()+"-shift ")+'job forms yet for this day.'+
       (open.length ? '<br><span class="mini">'+open.length+' on the clock right now: a line lands here for each man when he clocks out.</span>' : "")+
       '<br><br><button class="b" onclick="document.getElementById(\'addForm\').click()">Add a job form by hand</button></div></div>';
     return;
   }
-  host.innerHTML = forms.map((f,i)=>formHTML(f,i)).join("");
+  if(curShift==="both"){
+    const band = sh => { const fs = forms.filter(f=>okShift(f.shift)===sh); const t = sumTotals(fs.map(formTotals));
+      return '<div class="shiftband '+sh+'">'+shiftName(sh).toUpperCase()+' SHIFT <span class="mini">· '+fs.length+' form'+(fs.length===1?"":"s")+' · <span data-calc="bandhrs" data-sh="'+sh+'">'+hrs(t.hours)+'</span> hr</span><span class="spacer"></span><button class="b sm" data-addshift="'+sh+'">Add '+shiftName(sh).toLowerCase()+' job form</button></div>'+
+        (fs.length ? fs.map((f,i)=>formHTML(f,i)).join("") : '<div class="card"><div class="empty">No '+shiftName(sh).toLowerCase()+'-shift forms for this day.</div></div>'); };
+    host.innerHTML = band("day") + band("night");
+    host.querySelectorAll("[data-addshift]").forEach(b=>b.onclick=()=>{ dayRec(curDate).forms.push(newForm(b.dataset.addshift)); save(); renderDaily(); });
+  }
+  else host.innerHTML = forms.map((f,i)=>formHTML(f,i)).join("");
   wireForms();
 }
 
@@ -1795,20 +1833,20 @@ function formHTML(f,i){
     const e = emp(c.empId); const r = lineRate(e, j, f.shift); const s=db.settings;
     const lineCost = (+c.rt||0)*r+(+c.ot||0)*r*s.otMult+(+c.dt||0)*r*s.dtMult;
     const op = c.punchId ? db.punches.find(x=>x.id===c.punchId && !x.tout) : null;
-    return '<tr><td><select data-a="crewEmp" data-f="'+f.id+'" data-k="'+k+'"'+(c.punchId?' data-p="'+esc(c.punchId)+'"':"")+'>'+empOpts(c.empId)+'</select>'+
+    return '<tr><td class="who"><select data-a="crewEmp" data-f="'+f.id+'" data-k="'+k+'"'+(c.punchId?' data-p="'+esc(c.punchId)+'"':"")+'>'+empOpts(c.empId)+'</select>'+
       (op ? '<div class="mini" style="color:var(--red)">On the clock since '+T.clock(op.tin)+'</div>' : c.open ? '<div class="mini">On the clock</div>' : "")+'</td>'+
-      ['rt','ot','dt'].map(h=>'<td class="n"><input class="h num" type="number" step="0.25" min="0" data-a="crewH" data-h="'+h+'" data-f="'+f.id+'" data-k="'+k+'" value="'+(c[h]||"")+'"></td>').join("")+
-      '<td class="n num" data-calc="rowhrs" data-f="'+f.id+'" data-k="'+k+'">'+hrs((+c.rt||0)+(+c.ot||0)+(+c.dt||0))+"</td>"+
-      ($$ ? '<td class="n num" data-calc="rowcost" data-f="'+f.id+'" data-k="'+k+'">'+money(lineCost)+"</td>" : "")+
-      '<td><button class="x" data-a="crewDel" data-f="'+f.id+'" data-k="'+k+'" title="Remove">&times;</button></td></tr>';
+      ['rt','ot','dt'].map(h=>'<td class="n h-'+h+'" data-l="'+(h==="rt"?"Reg":h==="ot"?"O.T. 1.5×":"D.T. 2×")+'"><input class="h num" type="number" step="0.25" min="0" data-a="crewH" data-h="'+h+'" data-f="'+f.id+'" data-k="'+k+'" value="'+(c[h]||"")+'"></td>').join("")+
+      '<td class="n num hrs" data-l="Hours" data-calc="rowhrs" data-f="'+f.id+'" data-k="'+k+'">'+hrs((+c.rt||0)+(+c.ot||0)+(+c.dt||0))+"</td>"+
+      ($$ ? '<td class="n num cost" data-l="Cost" data-calc="rowcost" data-f="'+f.id+'" data-k="'+k+'">'+money(lineCost)+"</td>" : "")+
+      '<td class="del"><button class="x" data-a="crewDel" data-f="'+f.id+'" data-k="'+k+'" title="Remove">&times;</button></td></tr>';
   }).join("");
 
   const matRows = f.materials.map((m,k)=>
-    '<tr><td class="n"><input class="h num" type="number" step="0.01" min="0" data-a="matQty" data-f="'+f.id+'" data-k="'+k+'" value="'+(m.qty||"")+'"></td>'+
-    '<td><input type="text" data-a="matDesc" data-f="'+f.id+'" data-k="'+k+'" value="'+esc(m.desc)+'"></td>'+
-    ($$ ? '<td class="n"><input class="h num" type="number" step="0.01" min="0" data-a="matUnit" data-f="'+f.id+'" data-k="'+k+'" value="'+(m.unit||"")+'"></td>'+
-          '<td class="n num" data-calc="matamt" data-f="'+f.id+'" data-k="'+k+'">'+money((+m.qty||0)*(+m.unit||0))+"</td>" : "")+
-    '<td><button class="x" data-a="matDel" data-f="'+f.id+'" data-k="'+k+'">&times;</button></td></tr>').join("");
+    '<tr><td class="n qty" data-l="Quantity"><input class="h num" type="number" step="0.01" min="0" data-a="matQty" data-f="'+f.id+'" data-k="'+k+'" value="'+(m.qty||"")+'"></td>'+
+    '<td class="who" data-l="Material"><input type="text" data-a="matDesc" data-f="'+f.id+'" data-k="'+k+'" value="'+esc(m.desc)+'"></td>'+
+    ($$ ? '<td class="n unit" data-l="Unit price"><input class="h num" type="number" step="0.01" min="0" data-a="matUnit" data-f="'+f.id+'" data-k="'+k+'" value="'+(m.unit||"")+'"></td>'+
+          '<td class="n num cost" data-l="Amount" data-calc="matamt" data-f="'+f.id+'" data-k="'+k+'">'+money((+m.qty||0)*(+m.unit||0))+"</td>" : "")+
+    '<td class="del"><button class="x" data-a="matDel" data-f="'+f.id+'" data-k="'+k+'">&times;</button></td></tr>').join("");
 
   return '<div class="jobform">'+
     '<div class="formhead"><span class="no">FORM '+(i+1)+'</span>'+
@@ -1827,12 +1865,12 @@ function formHTML(f,i){
       '<label class="f" style="margin-top:9px">Detailed job description<textarea data-a="desc" data-f="'+f.id+'">'+esc(f.desc)+"</textarea></label>"+
 
       '<h3 style="font-size:12px;margin:14px 0 5px;color:var(--ink-2)">Crew</h3>'+
-      '<table><thead><tr><th style="width:34%">Employee</th><th class="n">Reg</th><th class="n">O.T. 1.5&times;</th><th class="n">D.T. 2&times;</th><th class="n">Hours</th>'+($$?'<th class="n">Cost</th>':"")+'<th></th></tr></thead>'+
+      '<table class="crewt"><thead><tr><th style="width:34%">Employee</th><th class="n">Reg</th><th class="n">O.T. 1.5&times;</th><th class="n">D.T. 2&times;</th><th class="n">Hours</th>'+($$?'<th class="n">Cost</th>':"")+'<th></th></tr></thead>'+
       "<tbody>"+(crewRows||'<tr><td colspan="7" class="mini" style="padding:9px">No men on this form yet.</td></tr>')+"</tbody></table>"+
       '<button class="b ghost sm" style="margin-top:7px" data-a="crewAdd" data-f="'+f.id+'">Add man</button>'+
 
       '<h3 style="font-size:12px;margin:14px 0 5px;color:var(--ink-2)">Material</h3>'+
-      '<table><thead><tr><th class="n" style="width:90px">Quantity</th><th>Material</th>'+($$?'<th class="n" style="width:110px">Unit price</th><th class="n" style="width:110px">Amount</th>':"")+'<th></th></tr></thead>'+
+      '<table class="matt"><thead><tr><th class="n" style="width:90px">Quantity</th><th>Material</th>'+($$?'<th class="n" style="width:110px">Unit price</th><th class="n" style="width:110px">Amount</th>':"")+'<th></th></tr></thead>'+
       "<tbody>"+(matRows||'<tr><td colspan="5" class="mini" style="padding:9px">No material on this form.</td></tr>')+"</tbody></table>"+
       '<button class="b ghost sm" style="margin-top:7px" data-a="matAdd" data-f="'+f.id+'">Add material line</button>'+
 
@@ -1853,6 +1891,7 @@ function findForm(fid){ return dayRec(curDate).forms.find(f=>f.id===fid); }
 function refreshCalcs(){
   const forms = dayForms(curDate, curShift);
   $("dayTot").innerHTML = totalStrip(sumTotals(forms.map(formTotals)));
+  if(curShift==="both") ["day","night"].forEach(sh=>{ const el=document.querySelector('#forms [data-calc="bandhrs"][data-sh="'+sh+'"]'); if(el) el.textContent = hrs(sumTotals(forms.filter(f=>okShift(f.shift)===sh).map(formTotals)).hours); });
   forms.forEach(f=>{
     const t = formTotals(f), j = job(f.jobId), p = pmOf(f.jobId);
     const q = (k,extra="") => document.querySelector('#forms [data-calc="'+k+'"][data-f="'+f.id+'"]'+extra);
@@ -1922,7 +1961,8 @@ function wireForms(){
 
 /* ---------------------------------------------------------------- weekly (on screen) */
 let wkEnd = D.weekEnd(D.iso(new Date()));
-let wkShift = "day";
+let wkShift = "day", wkSec = null;                 // wkSec: the shift being drawn or edited when "Both" is showing
+const wkCur = () => wkSec || (wkShift==="both" ? "day" : wkShift);
 let wkPm = "";
 const wkExtra = {};          // "jobId|shift|we" -> [empId] rows added but not yet filled
 const WKCOLS = [["rt","ot","dt"],["rt","ot","dt"],["rt","ot","dt"],["rt","ot","dt"],["rt","ot","dt"],["ot","dt"],["dt"]];
@@ -1941,22 +1981,28 @@ function renderWeekly(){
   fillJobSelect($("wAddJob"), visJobs().filter(j=>j.active!==false), "Pick a job", "");
 
   const days = Array.from({length:7},(_,i)=>D.add(wkEnd,i-6));
-  const recs = collect(d=>days.includes(d)).filter(r=>okShift(r.form.shift)===wkShift && (!wkPm || r.pm.id===wkPm));
-  const jobIds = new Set(recs.map(r=>r.job.id));
-  Object.keys(wkExtra).forEach(k=>{ const [jid,sh,we]=k.split("|"); if(sh===wkShift && we===wkEnd && job(jid) && (!wkPm || (job(jid).pmId===wkPm))) jobIds.add(jid); });
-  $("weekTot").innerHTML = totalStrip(sumTotals(recs.map(r=>r.t)));
-
-  const jobs = [...jobIds].map(job).filter(Boolean).sort((a,b)=>a.po.localeCompare(b.po));
-  if(!jobs.length){
-    $("weekOut").innerHTML = '<div class="card"><div class="empty">No '+shiftName(wkShift).toLowerCase()+'-shift hours in the week ending '+D.us(wkEnd)+'. Pick a job above to start a sheet.</div></div>';
-    return;
-  }
-  $("weekOut").innerHTML = jobs.map(j=>weekBlock(j, days)).join("");
-  wireWeekly();
+  const secs = wkShift==="both" ? ["day","night"] : [wkShift];
+  const allRecs = collect(d=>days.includes(d)).filter(r=>secs.includes(okShift(r.form.shift)) && (!wkPm || r.pm.id===wkPm));
+  $("weekTot").innerHTML = totalStrip(sumTotals(allRecs.map(r=>r.t)));
+  let html = "", any = false;
+  secs.forEach(sh=>{
+    wkSec = sh;
+    const recs = allRecs.filter(r=>okShift(r.form.shift)===sh);
+    const jobIds = new Set(recs.map(r=>r.job.id));
+    Object.keys(wkExtra).forEach(k=>{ const [jid,s2,we]=k.split("|"); if(s2===sh && we===wkEnd && job(jid) && (!wkPm || (job(jid).pmId===wkPm))) jobIds.add(jid); });
+    const jobs = [...jobIds].map(job).filter(Boolean).sort((a,b)=>a.po.localeCompare(b.po));
+    if(jobs.length) any = true;
+    if(wkShift==="both"){ const t = sumTotals(recs.map(r=>r.t)); html += '<div class="shiftband '+sh+'">'+shiftName(sh).toUpperCase()+' SHIFT <span class="mini">· '+jobs.length+' job'+(jobs.length===1?"":"s")+' · '+hrs(t.hours)+' hr</span></div>'; }
+    html += jobs.length ? jobs.map(j=>weekBlock(j, days)).join("")
+          : '<div class="card"><div class="empty">No '+shiftName(sh).toLowerCase()+'-shift hours in the week ending '+D.us(wkEnd)+'. Pick a job above to start a sheet.</div></div>';
+  });
+  wkSec = null;
+  $("weekOut").innerHTML = html;
+  if(any) wireWeekly();
 }
 /* if a day somehow holds two forms for the same job and shift, the weekly sheet treats them as one */
 function dayForm(date, jobId){
-  const fs = dayForms(date, wkShift).filter(x=>x.jobId===jobId);
+  const fs = dayForms(date, wkCur()).filter(x=>x.jobId===jobId);
   if(!fs.length) return null;
   if(fs.length===1) return fs[0];
   return Object.assign({}, fs[0], { crew: fs.flatMap(f=>f.crew||[]), materials: fs.flatMap(f=>f.materials||[]), desc: fs.map(f=>f.desc||"").sort((a,b)=>b.length-a.length)[0] });
@@ -1971,7 +2017,7 @@ function weekBlock(j, days){
   const forms = days.map(d=>dayForm(d, j.id));
   const empIds = new Set();
   forms.forEach(f=>{ if(f) f.crew.forEach(c=>{ if(c.empId) empIds.add(c.empId); }); });
-  (wkExtra[j.id+"|"+wkShift+"|"+wkEnd]||[]).forEach(id=>empIds.add(id));
+  (wkExtra[j.id+"|"+wkCur()+"|"+wkEnd]||[]).forEach(id=>empIds.add(id));
   const emps = [...empIds].map(emp).filter(Boolean).sort((a,b)=>a.name.localeCompare(b.name));
   const tot = sumTotals(forms.filter(Boolean).map(formTotals));
 
@@ -1981,8 +2027,8 @@ function weekBlock(j, days){
       const line = cellLine(d, j.id, e.id);
       const vals = WKCOLS[di].map(h=>{
         const v = line ? (+line[h]||0) : 0; sum+=v;
-        const r=lineRate(e, j, wkShift), m=h==="rt"?1:h==="ot"?db.settings.otMult:db.settings.dtMult; cost+=v*r*m;
-        return '<input class="wk num" type="number" step="0.25" min="0" data-w="'+j.id+'|'+d+'|'+e.id+'|'+h+'" value="'+(v||"")+'" placeholder="'+h.toUpperCase()+'" title="'+h.toUpperCase()+'">';
+        const r=lineRate(e, j, wkCur()), m=h==="rt"?1:h==="ot"?db.settings.otMult:db.settings.dtMult; cost+=v*r*m;
+        return '<input class="wk num" type="number" step="0.25" min="0" data-w="'+j.id+'|'+d+'|'+e.id+'|'+h+'|'+wkCur()+'" value="'+(v||"")+'" placeholder="'+h.toUpperCase()+'" title="'+h.toUpperCase()+'">';
       }).join("");
       return '<td class="n wkcell">'+vals+"</td>";
     }).join("");
@@ -1995,17 +2041,17 @@ function weekBlock(j, days){
   const notes = days.map((d,di)=>{
     const f = forms[di];
     return '<tr><td style="width:90px"><strong>'+DAYNAME[di].slice(0,3)+'</strong> <span class="mini">'+D.short(d)+'</span></td>'+
-      '<td><input type="text" data-wn="'+j.id+'|'+d+'" value="'+esc(f?f.desc:"")+'" placeholder="Work description"'+(f?"":' title="Enter hours first, then a description"')+"></td></tr>";
+      '<td><input type="text" data-wn="'+j.id+'|'+d+'|'+wkCur()+'" value="'+esc(f?f.desc:"")+'" placeholder="Work description"'+(f?"":' title="Enter hours first, then a description"')+"></td></tr>";
   }).join("");
 
-  return '<div class="card"><h2>'+esc(j.po)+" · "+esc(j.name)+'<span class="tag">'+(p?"PM: "+esc(p.name)+" · ":"")+shiftName(wkShift)+" · week ending "+D.us(wkEnd)+"</span></h2>"+
+  return '<div class="card"><h2>'+esc(j.po)+" · "+esc(j.name)+'<span class="tag">'+(p?"PM: "+esc(p.name)+" · ":"")+shiftName(wkCur())+" · week ending "+D.us(wkEnd)+"</span></h2>"+
     '<div class="body">'+legend+'<div style="overflow-x:auto"><table class="wkt"><thead><tr><th style="min-width:150px">Employee</th>'+
     days.map((d,di)=>'<th class="n">'+DAYNAME[di].slice(0,3)+'<br><span class="mini">'+D.short(d)+"</span><br><span class=\"mini\">"+WKCOLS[di].map(h=>h.toUpperCase()).join("/")+"</span></th>").join("")+
     '<th class="n">Total</th>'+($$?'<th class="n">Cost</th>':"")+"</tr></thead><tbody>"+
     (rows||'<tr><td colspan="10" class="mini" style="padding:9px">No men on this sheet yet.</td></tr>')+
     '</tbody><tfoot><tr><td>Total</td>'+days.map((d,di)=>{const f=forms[di]; const t=f?formTotals(f):null; return '<td class="n num">'+(t?hrs(t.hours):"")+"</td>";}).join("")+
     '<td class="n num">'+hrs(tot.hours)+"</td>"+($$?'<td class="n num">'+money(tot.cost)+"</td>":"")+"</tr></tfoot></table></div>"+
-    '<div class="row" style="margin-top:7px"><label class="f">Add man<select data-wadd="'+j.id+'"><option value="">Pick</option>'+
+    '<div class="row" style="margin-top:7px"><label class="f">Add man<select data-wadd="'+j.id+'|'+wkCur()+'"><option value="">Pick</option>'+
       visCrew().filter(e=>e.active!==false && !empIds.has(e.id)).sort(byName).map(e=>'<option value="'+e.id+'">'+esc(e.name)+(e.crew==="night"?" (N)":"")+"</option>").join("")+"</select></label>"+
       ($$?'<div class="spacer"></div><span class="mini num">OH and profit '+markupLabel(j)+" · billed "+money(tot.billed)+"</span>":"")+"</div>"+
     '<h3 style="font-size:12px;margin:14px 0 5px;color:var(--ink-2)">Work description</h3><table>'+notes+"</table>"+
@@ -2013,13 +2059,13 @@ function weekBlock(j, days){
 }
 function ensureForm(date, jobId){
   const rec = dayRec(date);
-  let f = rec.forms.find(x=>x.jobId===jobId && okShift(x.shift)===wkShift);
-  if(!f){ f = newForm(wkShift); f.jobId = jobId; rec.forms.push(f); }
+  let f = rec.forms.find(x=>x.jobId===jobId && okShift(x.shift)===wkCur());
+  if(!f){ f = newForm(wkCur()); f.jobId = jobId; rec.forms.push(f); }
   return f;
 }
 function wireWeekly(){
   document.querySelectorAll("#weekOut [data-w]").forEach(el=>el.onchange=ev=>{
-    const [jobId,date,empId,h] = el.dataset.w.split("|");
+    const [jobId,date,empId,h,sh] = el.dataset.w.split("|"); wkSec = okShift(sh);
     const v = ev.target.value;
     const f = ensureForm(date, jobId);
     let line = f.crew.find(c=>c.empId===empId);
@@ -2029,22 +2075,22 @@ function wireWeekly(){
     save(); renderWeekly();
   });
   document.querySelectorAll("#weekOut [data-wn]").forEach(el=>el.oninput=ev=>{
-    const [jobId,date] = el.dataset.wn.split("|");
+    const [jobId,date,sh] = el.dataset.wn.split("|"); wkSec = okShift(sh);
     const f = ensureForm(date, jobId);
     f.desc = ev.target.value; f._e = stampNow(); save();
   });
   document.querySelectorAll("#weekOut [data-wadd]").forEach(el=>el.onchange=ev=>{
     const id = ev.target.value; if(!id) return;
-    const k = el.dataset.wadd+"|"+wkShift+"|"+wkEnd;
+    const [jid,sh] = el.dataset.wadd.split("|"); const k = jid+"|"+okShift(sh)+"|"+wkEnd;
     (wkExtra[k]=wkExtra[k]||[]).push(id); renderWeekly();
   });
 }
 $("wWeek").onchange = e=>{ wkEnd = e.target.value; renderWeekly(); };
 $("wPrev").onclick = ()=>{ wkEnd = D.add(wkEnd,-7); renderWeekly(); };
 $("wNext").onclick = ()=>{ wkEnd = D.add(wkEnd, 7); renderWeekly(); };
-$("wShift").onchange = e=>{ wkShift = okShift(e.target.value); renderWeekly(); };
+$("wShift").onchange = e=>{ wkShift = e.target.value==="both" ? "both" : okShift(e.target.value); renderWeekly(); };
 $("wPm").onchange = e=>{ wkPm = e.target.value; renderWeekly(); };
-$("wAddJob").onchange = e=>{ const id=e.target.value; if(!id) return; const k=id+"|"+wkShift+"|"+wkEnd; wkExtra[k]=wkExtra[k]||[]; renderWeekly(); };
+$("wAddJob").onchange = e=>{ const id=e.target.value; if(!id) return; const k=id+"|"+okShift(wkShift)+"|"+wkEnd; wkExtra[k]=wkExtra[k]||[]; renderWeekly(); };
 
 /* ---------------------------------------------------------------- employees */
 $("cAdd").onclick = ()=>{
@@ -4164,17 +4210,17 @@ function renderClock(){
   const cols = 8+($$?1:0);
   const rowOf = p=>{
         const e=emp(p.empId), r=lineRate(e, job(p.jobId), p.shift);
-        return '<tr><td><select data-pp="'+p.id+'" data-f="empId">'+
+        return '<tr><td class="who"><select data-pp="'+p.id+'" data-f="empId">'+
           crewOnly().filter(x=>canSeeEmp(x.id)||x.id===p.empId).sort(byName).map(x=>'<option value="'+x.id+'"'+(x.id===p.empId?" selected":"")+">"+esc(x.name)+"</option>").join("")+"</select></td>"+
-          '<td><select data-pp="'+p.id+'" data-f="jobId">'+
+          '<td class="jb" data-l="Job"><select data-pp="'+p.id+'" data-f="jobId">'+
           jobOptHTML(db.jobs.filter(x=>canSeeJob(x.id)||x.id===p.jobId), p.jobId, "", false, true)+"</select></td>"+
-          '<td><select data-pp="'+p.id+'" data-f="shift"><option value="day"'+(p.shift!=="night"?" selected":"")+'>Day</option><option value="night"'+(p.shift==="night"?" selected":"")+'>Night</option></select></td>'+
-          '<td class="tm"><div class="tms"><input type="time" data-pp="'+p.id+'" data-f="tin" value="'+T.hm(p.tin)+'">'+
+          '<td class="sh" data-l="Shift"><select data-pp="'+p.id+'" data-f="shift"><option value="day"'+(p.shift!=="night"?" selected":"")+'>Day</option><option value="night"'+(p.shift==="night"?" selected":"")+'>Night</option></select></td>'+
+          '<td class="tm" data-l="In · Out"><div class="tms"><input type="time" data-pp="'+p.id+'" data-f="tin" value="'+T.hm(p.tin)+'">'+
           (p.tout?'<input type="time" data-pp="'+p.id+'" data-f="tout" value="'+T.hm(p.tout)+'">':'<button class="b ghost sm" data-pclose="'+p.id+'">Clock out now</button>')+"</div></td>"+
-          '<td><input type="checkbox" data-pp="'+p.id+'" data-f="meal" title="Unpaid meal taken"'+(p.noMeal?"":" checked")+"></td>"+
+          '<td class="meal" data-l="Meal"><input type="checkbox" data-pp="'+p.id+'" data-f="meal" title="Unpaid meal taken"'+(p.noMeal?"":" checked")+"></td>"+
           '<td class="loc">'+geoCell(p)+(p.ack && Object.keys(p.ack).length ? '<span class="chip appr" title="Opened the safety sign-in">Safety &#10003;</span>' : "")+"</td>"+
-          '<td class="n num">'+(p.tout?hrs(p.hours):"")+"</td>"+($$?'<td class="n num">'+(p.tout?money(p.hours*r):"")+"</td>":"")+
-          '<td style="width:26px"><button class="x" data-pdel="'+p.id+'">&times;</button></td></tr>';
+          '<td class="n num hrs" data-l="Hours">'+(p.tout?hrs(p.hours):"")+"</td>"+($$?'<td class="n num cost" data-l="Cost">'+(p.tout?money(p.hours*r):"")+"</td>":"")+
+          '<td class="del" style="width:26px"><button class="x" data-pdel="'+p.id+'">&times;</button></td></tr>';
       };
   let body = "";
   if(!grouped) body = list.map(rowOf).join("");
@@ -4299,7 +4345,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v43";
+const APP_VERSION = "v45";
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
