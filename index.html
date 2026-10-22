@@ -2016,7 +2016,7 @@ async function saveDaily(){
   W.forms.forEach(f=>{ fresh(f); (f.crew||[]).forEach(fresh); (f.materials||[]).forEach(fresh);
     ["xh","xm"].forEach(k=>Object.keys(f[k]||{}).forEach(x=>{ if(f[k][x] >= W.since) f[k][x] = now; })); });
   const rec = dayRec(date);
-  const merged = mergeDay({forms:W.forms, gone:W.gone}, rec);
+  const merged = mergeDay({forms:W.forms, gone:W.gone}, rec, date);
   merged._seen = rec._seen; merged._u = now;
   db.days[date] = merged;
   WORK = null;
@@ -3549,8 +3549,11 @@ function mergeForm(a, b, skip){
   else if(!a._e && !b._e){ if(!a.desc && b.desc) a.desc=b.desc; if(b.complete) a.complete=true; if(!a.jobId && b.jobId) a.jobId=b.jobId; }
   return a;
 }
-/* one form per job and shift on a day, and one line per punch on the whole day */
-function foldDay(day, skip){
+/* one form per job and shift on a day, and one line per punch on the whole day - on the form of the punch's OWN job,
+   shift and day. Every device runs this on every merge, so from the same punches they all arrive at the same sheet:
+   a copy left behind when the office moved a punch (or a stale copy another iPad still had) goes, anything the office
+   typed on it moves along, and a line nobody typed on says exactly what the punch says. */
+function foldDay(day, skip, date){
   skip = skip || noLineIds();
   const forms = (day.forms||[]).filter(Boolean);
   const groups = new Map();
@@ -3563,13 +3566,37 @@ function foldDay(day, skip){
     sorted.slice(1).forEach(f=>mergeForm(into, f, skip));
     keep.push(into);
   });
-  const dup = forms.length !== keep.length;
+  const byId = new Map(db.punches.map(p=>[p.id,p])), gone = SB.gone||new Set(), strays = [];
+  keep.forEach(f=>{ f.crew = (f.crew||[]).filter(c=>{
+    if(!c) return false; if(!c.punchId) return true;
+    if(skip.has(c.punchId) || gone.has(c.punchId)) return false;                       // taken off by the office, or the punch is deleted
+    const p = byId.get(c.punchId); if(!p) return true;                                 // a punch this device has not seen yet: leave its line be
+    const ok = (!f.jobId || !p.jobId || p.jobId===f.jobId) && okShift(f.shift)===okShift(p.shift) && (!date || !p.date || p.date===date);
+    if(!ok && c._e) strays.push({c, p});
+    return ok;
+  }); });
   const seen = new Set();
-  keep.forEach(f=>{ f.crew = (f.crew||[]).filter(c=>{ if(!c) return false; if(!c.punchId) return true; if(seen.has(c.punchId)) return false; seen.add(c.punchId); return true; }); });
-  if(dup) day.forms = keep;                                                           // untouched days keep their exact shape
+  keep.forEach(f=>{ f.crew = f.crew.filter(c=>{ if(!c.punchId) return true; if(seen.has(c.punchId)) return false; seen.add(c.punchId); return true; }); });
+  strays.forEach(({c,p})=>{                                                            // hours typed on a stray copy follow the punch to its own form
+    if(!date || p.date!==date || !p.jobId) return;
+    const sh = okShift(p.shift);
+    let f = keep.find(x=>x.jobId===p.jobId && okShift(x.shift)===sh);
+    if(!f){ f = newForm(sh); f.id = "f|"+date+"|"+p.jobId+"|"+sh; f.jobId = p.jobId; keep.push(f); }
+    let l = f.crew.find(x=>x.punchId===p.id);
+    if(!l){ l = {empId:p.empId, rt:"", ot:"", dt:"", punchId:p.id}; f.crew.push(l); seen.add(p.id); }
+    if(ts(c._e) > ts(l._e)){ l.rt=c.rt; l.ot=c.ot; l.dt=c.dt; l._e=c._e; delete l.open; }
+  });
+  keep.forEach(f=>f.crew.forEach(c=>{                                                  // untouched lines: what the punch says, the same on every device
+    if(!c.punchId || c._e) return;
+    const p = byId.get(c.punchId); if(!p) return;
+    if(p.empId) c.empId = p.empId;
+    if(!p.tout){ c.open = true; c.rt=""; c.ot=""; c.dt=""; return; }
+    delete c.open; const s = lineSplit(p); c.rt = s.rt; c.ot = s.ot||""; c.dt = s.dt||"";
+  }));
+  day.forms = keep;
   return day;
 }
-function mergeDay(local, cloud){
+function mergeDay(local, cloud, date){
   const out = copy(cloud||{forms:[]});
   out.forms = (Array.isArray(out.forms) ? out.forms : []).filter(Boolean);
   const gone = new Set([...((local&&local.gone)||[]), ...((cloud&&cloud.gone)||[])]);
@@ -3582,14 +3609,14 @@ function mergeDay(local, cloud){
     if(!cf){ out.forms.push(copy(lf)); return; }
     mergeForm(cf, lf, skip);
   });
-  return foldDay(out, skip);
+  return foldDay(out, skip, date);
 }
 function healDays(){
   const cutoff = D.iso(new Date(Date.now()-21*86400000));
   const ids = new Set(db.punches.map(p=>p.id)), have = new Set(), openIds = new Set(), skip = noLineIds(), gone = SB.gone||new Set();
   Object.keys(db.days||{}).forEach(d=>{
     if(d < cutoff || !db.days[d]) return;
-    foldDay(db.days[d], skip);
+    foldDay(db.days[d], skip, d);
     (db.days[d].forms||[]).forEach(f=>{
       if(!f) return;
       f.crew = (f.crew||[]).filter(c=>c && !(c.punchId && (gone.has(c.punchId) || skip.has(c.punchId))));   // only a punch we know was deleted
@@ -3723,7 +3750,7 @@ async function sbPushAll_(){
         const loc = db.days[r.id];
         if(!loc || !r.data || r.data.__deleted) return;
         if(!sameTime(r.updated_at, loc._seen)){                 // somebody else touched this day since we last looked
-          const m = mergeDay(loc, r.data); m._u = stampNow(); m._seen = loc._seen; db.days[r.id] = m;
+          const m = mergeDay(loc, r.data, r.id); m._u = stampNow(); m._seen = loc._seen; db.days[r.id] = m;
         }
       });
       const days = dayIds.map(d=>({ id:d, data:db.days[d], updated_at:db.days[d]._u||stampNow() }));
@@ -3842,7 +3869,7 @@ async function sbPull(){
         db.days[r.id] = r.data; db.days[r.id]._u = r.updated_at; db.days[r.id]._seen = r.updated_at;
         settle("days/"+r.id, daySig(db.days[r.id])); return;
       }
-      const m = mergeDay(loc, r.data);                              // both sides changed: keep everybody's lines
+      const m = mergeDay(loc, r.data, r.id);                        // both sides changed: keep everybody's lines
       m._seen = r.updated_at;
       if(daySig(m) === daySig(r.data)){ m._u = r.updated_at; db.days[r.id] = m; settle("days/"+r.id, daySig(m)); }
       else { m._u = stampNow(); db.days[r.id] = m; }               // stays dirty; goes back up merged
@@ -4534,7 +4561,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v46";
+const APP_VERSION = "v47";
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
