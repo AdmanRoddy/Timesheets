@@ -131,6 +131,10 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
 .flag{border-left:4px solid var(--red);background:rgba(189,29,35,.07);padding:9px 11px;margin:10px 0;font-size:13px;border-radius:0 8px 8px 0}
 .flag.good{border-left-color:var(--ok);background:rgba(30,122,70,.09)}
 .flag.warn{border-left-color:var(--warn);background:rgba(184,114,12,.1)}
+.savebar{position:sticky;top:calc(env(safe-area-inset-top,0px) + 114px);z-index:3;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 14px;margin:0 0 10px;border-radius:10px;background:var(--paper);border:1px solid var(--line);box-shadow:0 3px 12px rgba(0,0,0,.10);font-size:14px}
+.savebar.dirty{border-color:var(--warn);background:linear-gradient(rgba(184,114,12,.14),rgba(184,114,12,.14)),var(--paper)}
+.savebar .spacer{flex:1}
+.savebar .b.sm{min-height:34px}
 .empty{padding:26px 12px;text-align:center;color:var(--ink-2)}
 
 .tot{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-top:10px}
@@ -275,6 +279,7 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
 @media (max-width:640px){
   /* the tab bar wraps so every tab is on screen, and scrolls away with the page */
   nav{position:static}
+  .savebar{top:calc(env(safe-area-inset-top,0px) + 100px)}
   nav .in{flex-wrap:wrap;overflow:visible;gap:5px;padding:8px var(--pad) 4px}
   nav button{padding:6px 10px;font-size:13px}
   /* daily crew and material rows stack: name on top, hours underneath, totals under that */
@@ -370,6 +375,7 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
       <div class="tot" id="dayTot"></div>
     </div>
   </div>
+  <div id="saveBar" class="savebar" hidden></div>
   <div id="forms"></div>
 </section>
 
@@ -1484,6 +1490,56 @@ function holidayOn(date){
 }
 const jobSched = j => (j && j.sched) || db.settings.sched || "5x8";
 const jobStart = j => (j && j.start) || db.settings.startTime || "07:00";
+/* Half-hour rule, per job (Jobs tab). When it is on, the day shift pays from the scheduled start however early the
+   man clocks in; a clock-out before the grace window rounds DOWN to the half hour; at or inside the grace window
+   (3:00 on a 7-3:30 job) he gets the full day; past quitting time both ends round to the NEAREST half hour.
+   Night shift: nearest half hour both ends. The punch keeps his real clock times - only the paid span changes. */
+const jobRound = j => !!(j && j.rnd);
+const jobGrace = j => hasNum(j && j.rndGrace) ? +j.rndGrace : 30;
+function jobQuitIso(j, date){
+  const st = T.atHM(date, jobStart(j)); if(!st) return null;
+  return new Date(new Date(st).getTime() + ((jobSched(j)==="4x10"?10:8) + (+db.settings.mealMin||0)/60)*3600000).toISOString();
+}
+const ms = t => new Date(t).getTime();
+/* the leg he came off when he moved jobs: a finished punch today whose clock-out is within a few minutes of this clock-in */
+function legBefore(p){
+  return db.punches.filter(x=>x.id!==p.id && x.empId===p.empId && x.date===p.date && x.tout && okShift(x.shift)===okShift(p.shift) && ms(x.tin) < ms(p.tin) && Math.abs(ms(p.tin)-ms(x.tout)) <= 15*60000)
+    .sort((a,b)=>ms(b.tout)-ms(a.tout))[0] || null;                      // strictly earlier, so the chain always runs back in time and ends
+}
+function paidSpan(p){
+  const j = job(p.jobId), raw = {tin:p.tin, tout:p.tout||null, rounded:false};
+  if(!p.tin) return raw;
+  let tin = p.tin, tout = p.tout || null;
+  if(jobRound(j)){
+    const STEP = 30*60000;
+    const near = t => new Date(Math.round(ms(t)/STEP)*STEP).toISOString();
+    const down = t => new Date(Math.floor(ms(t)/STEP)*STEP).toISOString();
+    tin = near(p.tin); tout = p.tout ? near(p.tout) : null;
+    if(okShift(p.shift)==="day"){
+      const date = p.date || T.dateOf(p.tin);
+      const start = T.atHM(date, jobStart(j)), quit = jobQuitIso(j, date);
+      if(start && ms(p.tin) < ms(start)) tin = start;                     // in early: pays from the start of the shift
+      if(quit && p.tout){
+        const graceFrom = ms(quit) - jobGrace(j)*60000, out = ms(p.tout);
+        tout = out < graceFrom ? down(p.tout) : out < ms(quit) ? quit : near(p.tout);
+      }
+    }
+    if(tout && ms(tout) <= ms(tin)){ tin = near(p.tin); tout = near(p.tout); if(ms(tout) <= ms(tin)){ tin = p.tin; tout = p.tout; } }   // a punch of a few minutes: real times
+  }
+  /* moved from another job: his day is continuous, so this leg picks up where the last leg's paid span ended -
+     nothing paid twice inside the grace window, nothing lost at the hand-off */
+  const prev = legBefore(p);
+  if(prev){ const pt = paidSpan(prev).tout; if(pt){ tin = pt; if(tout && ms(tout) < ms(tin)) tout = tin; } }   // swallowed by the last leg's grace: this leg pays nothing
+  const diff = (a,b) => Math.abs(ms(a)-ms(b)) >= 60000;
+  return {tin, tout, rounded: diff(tin,p.tin) || (!!tout && diff(tout,p.tout))};
+}
+/* the meal already taken out of earlier legs today, so a later leg's OT window still starts after 8 (or 10) paid hours */
+function earlierMeal(p){
+  return db.punches.filter(x=>x.id!==p.id && x.empId===p.empId && x.date===p.date && x.tout && okShift(x.shift)===okShift(p.shift) && String(x.tin)<String(p.tin))
+    .reduce((a,x)=>a+mealHrs(x, spanHrs(x)), 0);
+}
+const spanHrs = p => { const s=paidSpan(p); return s.tout ? Math.max(0,(new Date(s.tout)-new Date(s.tin))/3600000) : 0; };
+function paidNote(p){ const s=paidSpan(p); return s.rounded ? (s.tout ? " Paid "+T.clock(s.tin)+" to "+T.clock(s.tout)+"." : " Pays from "+T.clock(s.tin)+".") : ""; }
 /* Work week and overtime (3.01, 3.02a, 3.11), figured by the clock the way the agreement reads:
      5/8:  8 hours from the job's start time; the first 4 hours after the scheduled quitting time Mon-Fri are 1.5x
      4/10: 10 hours from the start time Mon-Thu; the first 2 hours after quitting time are 1.5x; the first 12 hours Friday are 1.5x
@@ -1501,11 +1557,11 @@ function splitPunch(p, j){
   if(dow===5 || (ten && dow===4)){ const ot=Math.min(12,H); return Object.assign(z, {ot:r2(ot), dt:r2(H-ot)}); }
   if(okShift(p.shift)==="night"){ const rt=Math.min(8,H); return Object.assign(z, {rt:r2(rt), ot:r2(H-rt)}); }
   const R = ten?10:8, W = ten?2:4;
-  const tin=new Date(p.tin), tout=new Date(p.tout);
+  const sp = paidSpan(p), tin=new Date(sp.tin), tout=new Date(sp.tout);
   const startIso = T.atHM(date, jobStart(j)); if(!startIso) return Object.assign(z, {rt:H});
   const start = new Date(startIso);
   const unpaid = Math.max(0, (tout-tin)/3600000 - H);                    // the meal period sits inside the regular stretch
-  const quit = new Date(start.getTime() + (R+unpaid)*3600000);
+  const quit = new Date(start.getTime() + (R+unpaid+earlierMeal(p))*3600000);
   const otEnd = new Date(quit.getTime() + W*3600000);
   const clip = (a,b) => Math.max(0, (Math.min(tout,b)-Math.max(tin,a))/3600000);
   const early = clip(new Date(0), start);
@@ -1583,6 +1639,8 @@ function applyRole(){
 const views = ["daily","weekly","crew","jobs","clock","timeoff","safety","reports","export","settings"];
 document.querySelectorAll("nav button").forEach(b=>{
   b.onclick = () => {
+    const from = document.querySelector('nav button[aria-current="true"]');
+    if(from && from!==b && from.dataset.v==="daily" && dailyDirty()){ leaveDaily().then(ok=>{ if(ok) b.onclick(); }); return; }   // asks first, then comes back here clean
     document.querySelectorAll("nav button").forEach(x=>x.setAttribute("aria-current", x===b));
     views.forEach(v=>document.getElementById("v-"+v).hidden = (v!==b.dataset.v));
     if(b.dataset.v==="daily")   renderDaily();
@@ -1642,17 +1700,47 @@ function post(p){
   if(!line._e && !typed){ const s = lineSplit(p); line.rt = s.rt; line.ot = s.ot||""; line.dt = s.dt||""; }   // never undo an office correction
 }
 function repost(p){ unpost(p); post(p); }
-/* paid hours: time on the clock less the unpaid meal period, when the shift is long enough to have one.
-   Nobody clocks out for lunch, so 7:00 to 3:15 with a 15 minute meal pays 8.00. */
+/* paid hours: time on the clock (the paid span, if the job rounds) less the unpaid meal period, once the man's
+   day is long enough to have one. Nobody clocks out for lunch, so 7:00 to 3:30 with a 30 minute meal pays 8.00.
+   The meal comes out ONCE a day: a man moved between jobs has it taken from the punch that carries his day past
+   the threshold, not from each punch (and not from none of them). */
 function mealHrs(p, elapsed){
   if(p.noMeal) return 0;
   const m = +db.settings.mealMin||0, after = +db.settings.mealAfter||0;
-  return (m>0 && elapsed >= after) ? m/60 : 0;
+  if(!(m>0)) return 0;
+  const before = db.punches.filter(x=>x.id!==p.id && x.empId===p.empId && x.date===p.date && okShift(x.shift)===okShift(p.shift) && x.tout && String(x.tin)<String(p.tin))
+    .sort((a,b)=>String(a.tin).localeCompare(String(b.tin)));
+  let run = 0;
+  for(const x of before){ run += spanHrs(x); if(!x.noMeal && run >= after) return 0; }   // an earlier punch today already carries the meal
+  return (run+elapsed >= after) ? m/60 : 0;
 }
 function punchHours(p){
   if(!p.tout) return 0;
-  const elapsed = Math.max(0,(new Date(p.tout)-new Date(p.tin))/3600000);
+  const elapsed = spanHrs(p);
   return roundHrs(Math.max(0, elapsed - mealHrs(p, elapsed)));
+}
+/* after a rule changes (meal, rounding, a job's half-hour rule): hours again from the clock times, and the daily
+   line re-split unless the office moved OT/DT by hand, in which case Reg takes up the difference */
+function refigure(ps){
+  ps.forEach(p=>{
+    p.hours = punchHours(p);
+    let line=null;
+    Object.keys(db.days).forEach(d=>dayRec(d).forms.forEach(f=>{ const l=f.crew.find(c=>c.punchId===p.id); if(l) line=l; }));
+    if(!line){ post(p); return; }
+    if(!line._e){ const s=lineSplit(p); line.rt=s.rt; line.ot=s.ot||""; line.dt=s.dt||""; return; }
+    const moved = (+line.ot||0)+(+line.dt||0);
+    line.rt = Math.max(0, Math.round((p.hours-moved)*100)/100); line._e = stampNow();
+  });
+  return ps.length;
+}
+const lineOf = p => { const r=db.days[p.date]; if(!r) return null; for(const f of r.forms){ const l=f.crew.find(c=>c.punchId===p.id); if(l) return l; } return null; };
+/* figured under an older rule: the hours, or the Reg/OT/DT split on the daily, no longer match what the rules say today */
+function stalePunch(p){
+  if(!p.tout) return false;
+  if(Math.abs((+p.hours||0) - punchHours(p)) > 0.005) return true;
+  const l = lineOf(p); if(!l || l._e) return false;
+  const s = lineSplit(p), d = (a,b) => Math.abs((+a||0)-(+b||0)) > 0.011;
+  return d(l.rt,s.rt) || d(l.ot,s.ot) || d(l.dt,s.dt);
 }
 /* ---------------------------------------------------------------- job-site geofence
    Each job can carry a site location and radius. At clock-in the tablet's GPS is
@@ -1725,16 +1813,16 @@ let curShift = "day";
 let lastDeleted = null;
 const $ = id => document.getElementById(id);
 $("dDate").value = curDate;
-$("dDate").onchange = e => {
-  const v = e.target.value;
-  if(!D.ok(v)){ e.target.value = curDate; return; }
-  curDate = v; renderDaily();
+const goDay = d => {
+  if(dailyDirty()){ leaveDaily().then(ok=>{ if(ok) goDay(d); else $("dDate").value = curDate; }); return; }
+  curDate = d; $("dDate").value = curDate; renderDaily();
 };
+$("dDate").onchange = e => { const v = e.target.value; if(!D.ok(v)){ e.target.value = curDate; return; } goDay(v); };
 $("dShift").onchange = e => { curShift = e.target.value==="both" ? "both" : okShift(e.target.value); renderDaily(); };
-$("dPrev").onclick = ()=>{ curDate = D.add(curDate,-1); $("dDate").value=curDate; renderDaily(); };
-$("dNext").onclick = ()=>{ curDate = D.add(curDate, 1); $("dDate").value=curDate; renderDaily(); };
-$("dToday").onclick= ()=>{ curDate = D.iso(new Date()); $("dDate").value=curDate; renderDaily(); };
-$("addForm").onclick = ()=>{ dayRec(curDate).forms.push(newForm(okShift(curShift))); save(); renderDaily(); };
+$("dPrev").onclick = ()=>goDay(D.add(curDate,-1));
+$("dNext").onclick = ()=>goDay(D.add(curDate, 1));
+$("dToday").onclick= ()=>goDay(D.iso(new Date()));
+$("addForm").onclick = ()=>{ workFor(curDate).forms.push(newForm(okShift(curShift))); markWork(); renderDaily(); };
 
 const dayForms = (date, shift) => { const fs = dayRec(date).forms.filter(f=>(shift==="both" || okShift(f.shift)===okShift(shift)) && (!f.jobId || canSeeJob(f.jobId)));
   return shift==="both" ? fs.filter(f=>okShift(f.shift)==="day").concat(fs.filter(f=>okShift(f.shift)==="night")) : fs; };
@@ -1745,8 +1833,9 @@ function renderDaily(){
   if(w) w.innerHTML = (cfg.url && cfg.key && !SB.on)
     ? '<div class="flag"><strong>Not syncing.</strong> Supabase is set up but this device is not connected, so anything punched on the tablets will not show here. Settings → Sync → Connect.</div>'
   : "";
-  const forms = dayForms(curDate, curShift);
+  const forms = dayFormsView(curDate, curShift, true);
   $("dayTag").textContent = D.long(curDate)+"  ·  "+(curShift==="both" ? "Day and night shifts" : shiftName(curShift)+" shift")+"  ·  week ending "+D.us(D.weekEnd(curDate));
+  saveBar();
   renderFlags();
   const ub = $("undoBar");
   if(ub){
@@ -1755,13 +1844,19 @@ function renderDaily(){
         '. <button class="b ghost sm" id="undoDel">Put it back</button></div>'
     : "";
     if(lastDeleted) $("undoDel").onclick = ()=>{
-      const r = dayRec(lastDeleted.date);
-      if(!r.forms.some(f=>f.id===lastDeleted.form.id)) r.forms.push(Object.assign({}, lastDeleted.form, {id:uid()}));
-      (lastDeleted.form.crew||[]).forEach(c=>{ const p=c && c.punchId && db.punches.find(x=>x.id===c.punchId); if(p) delete p.noLine; });
+      const back = Object.assign({}, lastDeleted.form, {id:uid()});
+      const w = (WORK && WORK.date===lastDeleted.date && WORK.dirty) ? WORK : null;
+      if(w){ w.forms.push(back); w.gone = w.gone.filter(id=>id!==lastDeleted.form.id); (lastDeleted.form.crew||[]).forEach(c=>{ if(c && c.punchId) w.noLine.delete(c.punchId); }); markWork(); }
+      else {
+        const r = dayRec(lastDeleted.date);
+        if(!r.forms.some(f=>f.id===lastDeleted.form.id)) r.forms.push(back);
+        (lastDeleted.form.crew||[]).forEach(c=>{ const p=c && c.punchId && db.punches.find(x=>x.id===c.punchId); if(p) delete p.noLine; });
+        save();
+      }
       curDate = lastDeleted.date; curShift = okShift(lastDeleted.form.shift);
       $("dDate").value = curDate; $("dShift").value = curShift;
       lastDeleted = null;
-      save(); renderDaily();
+      renderDaily();
     };
   }
   $("dayTot").innerHTML = totalStrip(sumTotals(forms.map(formTotals)));
@@ -1779,14 +1874,14 @@ function renderDaily(){
       return '<div class="shiftband '+sh+'">'+shiftName(sh).toUpperCase()+' SHIFT <span class="mini">· '+fs.length+' form'+(fs.length===1?"":"s")+' · <span data-calc="bandhrs" data-sh="'+sh+'">'+hrs(t.hours)+'</span> hr</span><span class="spacer"></span><button class="b sm" data-addshift="'+sh+'">Add '+shiftName(sh).toLowerCase()+' job form</button></div>'+
         (fs.length ? fs.map((f,i)=>formHTML(f,i)).join("") : '<div class="card"><div class="empty">No '+shiftName(sh).toLowerCase()+'-shift forms for this day.</div></div>'); };
     host.innerHTML = band("day") + band("night");
-    host.querySelectorAll("[data-addshift]").forEach(b=>b.onclick=()=>{ dayRec(curDate).forms.push(newForm(b.dataset.addshift)); save(); renderDaily(); });
+    host.querySelectorAll("[data-addshift]").forEach(b=>b.onclick=()=>{ workFor(curDate).forms.push(newForm(b.dataset.addshift)); markWork(); renderDaily(); });
   }
   else host.innerHTML = forms.map((f,i)=>formHTML(f,i)).join("");
   wireForms();
 }
 
 function renderFlags(){
-  const forms = dayForms(curDate, curShift);
+  const forms = dayFormsView(curDate, curShift);
   const flags=[];
   { const hol = holidayOn(curDate), dow = D.dow(curDate);
     if(hol) flags.push(["<strong>"+esc(hol)+"</strong>: every hour today is double time (Section 3.02).","warn"]);
@@ -1834,7 +1929,7 @@ function formHTML(f,i){
     const lineCost = (+c.rt||0)*r+(+c.ot||0)*r*s.otMult+(+c.dt||0)*r*s.dtMult;
     const op = c.punchId ? db.punches.find(x=>x.id===c.punchId && !x.tout) : null;
     return '<tr><td class="who"><select data-a="crewEmp" data-f="'+f.id+'" data-k="'+k+'"'+(c.punchId?' data-p="'+esc(c.punchId)+'"':"")+'>'+empOpts(c.empId)+'</select>'+
-      (op ? '<div class="mini" style="color:var(--red)">On the clock since '+T.clock(op.tin)+'</div>' : c.open ? '<div class="mini">On the clock</div>' : "")+'</td>'+
+      (op ? '<div class="mini" style="color:var(--red)">On the clock since '+T.clock(paidSpan(op).tin)+(paidSpan(op).rounded?' <span style="color:var(--ink-2)">(in at '+T.clock(op.tin)+')</span>':'')+'</div>' : c.open ? '<div class="mini">On the clock</div>' : "")+'</td>'+
       ['rt','ot','dt'].map(h=>'<td class="n h-'+h+'" data-l="'+(h==="rt"?"Reg":h==="ot"?"O.T. 1.5×":"D.T. 2×")+'"><input class="h num" type="number" step="0.25" min="0" data-a="crewH" data-h="'+h+'" data-f="'+f.id+'" data-k="'+k+'" value="'+(c[h]||"")+'"></td>').join("")+
       '<td class="n num hrs" data-l="Hours" data-calc="rowhrs" data-f="'+f.id+'" data-k="'+k+'">'+hrs((+c.rt||0)+(+c.ot||0)+(+c.dt||0))+"</td>"+
       ($$ ? '<td class="n num cost" data-l="Cost" data-calc="rowcost" data-f="'+f.id+'" data-k="'+k+'">'+money(lineCost)+"</td>" : "")+
@@ -1885,11 +1980,74 @@ function moneyStrip(t){
     '<div class="money"><b>TOTAL BILLED</b><span class="num">'+money(t.billed)+"</span></div>";
 }
 
-function findForm(fid){ return dayRec(curDate).forms.find(f=>f.id===fid); }
+/* The Daily sheet works on a copy of the day. Typing changes the copy; Save folds it into the books (line by
+   line, so punches that closed and other people's lines meanwhile are kept) and sends it. Until then nothing
+   syncs, and a sync never redraws a sheet somebody is in the middle of. */
+let WORK = null, SAVED_MSG = "";
+function newWork(date){ const r = dayRec(date); return { date, forms: copy(r.forms||[]), gone: [...(r.gone||[])], dirty:false, edits:0, noLine:new Set(), since:stampNow() }; }
+function workFor(date){ if(!WORK || WORK.date!==date) WORK = newWork(date); return WORK; }
+/* the sheet draws from the copy; a redraw takes a fresh copy unless there are unsaved changes in it */
+const dayFormsView = (date, shift, refresh) => {
+  if(refresh && !(WORK && WORK.date===date && WORK.dirty)) WORK = newWork(date);
+  const w = workFor(date);
+  const fs = w.forms.filter(f=>(shift==="both" || okShift(f.shift)===okShift(shift)) && (!f.jobId || canSeeJob(f.jobId)));
+  return shift==="both" ? fs.filter(f=>okShift(f.shift)==="day").concat(fs.filter(f=>okShift(f.shift)==="night")) : fs;
+};
+function markWork(){ const w = workFor(curDate); w.dirty = true; w.edits = (w.edits||0)+1; saveBar(); }
+function dailyDirty(){ return !!(WORK && WORK.dirty); }
+function saveBar(){
+  const el = $("saveBar"); if(!el) return;
+  const dirty = dailyDirty() && WORK.date===curDate, n = dirty ? WORK.edits : 0;
+  el.hidden = false;
+  el.className = "savebar"+(dirty?" dirty":"");
+  el.innerHTML = dirty
+    ? '<span><strong>'+n+' unsaved change'+(n===1?"":"s")+'</strong> on this sheet. They reach the books and the other devices when you save.</span><span class="spacer"></span>'+
+      '<button class="b sm" id="dSave">Save</button><button class="b ghost sm" id="dDiscard">Discard</button>'
+    : '<span class="mini">'+(SAVED_MSG || "Nothing unsaved. Type your changes, then Save.")+'</span><span class="spacer"></span><button class="b ghost sm" id="dSave" disabled>Saved</button>';
+  const sv = $("dSave"); if(sv) sv.onclick = ()=>saveDaily();
+  const dc = $("dDiscard"); if(dc) dc.onclick = async ()=>{ if(!await ask("Throw away the "+n+" unsaved change"+(n===1?"":"s")+" on this sheet?", true)) return; WORK = null; SAVED_MSG = "Changes discarded."; renderDaily(); };
+}
+async function saveDaily(){
+  if(!dailyDirty()) return true;
+  const W = WORK, date = W.date, now = stampNow();
+  const sv = $("dSave"); if(sv){ sv.disabled = true; sv.textContent = "Saving…"; }
+  W.noLine.forEach(id=>{ const p = db.punches.find(x=>x.id===id); if(p) p.noLine = true; });
+  const fresh = o => { if(o && o._e && o._e >= W.since) o._e = now; };          // edited here: the save moment is what counts
+  W.forms.forEach(f=>{ fresh(f); (f.crew||[]).forEach(fresh); (f.materials||[]).forEach(fresh);
+    ["xh","xm"].forEach(k=>Object.keys(f[k]||{}).forEach(x=>{ if(f[k][x] >= W.since) f[k][x] = now; })); });
+  const rec = dayRec(date);
+  const merged = mergeDay({forms:W.forms, gone:W.gone}, rec);
+  merged._seen = rec._seen; merged._u = now;
+  db.days[date] = merged;
+  WORK = null;
+  save(); renderDaily();
+  SAVED_MSG = "Saving…"; saveBar();
+  await new Promise(r=>setTimeout(r, 200));
+  if(SB.on){
+    try{
+      const t0 = Date.now(); while(SB.pushing && Date.now()-t0 < 15000) await new Promise(r=>setTimeout(r, 100));
+      clearTimeout(sbTimer); sbTimer = null;
+      await sbPushAll();
+      SAVED_MSG = SB.dirty.has("days/"+date) ? "Saved here at "+T.clock(new Date().toISOString())+" · still sending" : "Saved and sent to the cloud at "+T.clock(new Date().toISOString())+".";
+    }catch(e){ SAVED_MSG = "Saved on this device at "+T.clock(new Date().toISOString())+" · could not send yet ("+e.message+"). It goes up when the connection is back."; }
+  } else SAVED_MSG = sbCfg().url ? "Saved on this device at "+T.clock(new Date().toISOString())+" · not connected, so the other devices get it when this one reconnects." : "Saved at "+T.clock(new Date().toISOString())+".";
+  saveBar();
+  return true;
+}
+/* moving to another day or tab with unsaved changes: save first, or stay */
+async function leaveDaily(){
+  if(!dailyDirty()) return true;
+  const n = WORK.edits;
+  if(!await ask("You have "+n+" unsaved change"+(n===1?"":"s")+" on the "+D.us(WORK.date)+" sheet. Save "+(n===1?"it":"them")+" now? Cancel stays on the sheet.")) return false;
+  await saveDaily(); return true;
+}
+window.addEventListener("beforeunload", e=>{ if(dailyDirty()){ e.preventDefault(); e.returnValue = ""; } });
+document.addEventListener("visibilitychange", ()=>{ if(document.hidden && dailyDirty()) saveDaily(); });   // the lid closes: nothing typed is lost
+function findForm(fid){ return (WORK && WORK.date===curDate ? WORK : dayRec(curDate)).forms.find(f=>f.id===fid); }
 
 /* recompute the numbers without touching the inputs, so focus and tab order survive */
 function refreshCalcs(){
-  const forms = dayForms(curDate, curShift);
+  const forms = dayFormsView(curDate, curShift);
   $("dayTot").innerHTML = totalStrip(sumTotals(forms.map(formTotals)));
   if(curShift==="both") ["day","night"].forEach(sh=>{ const el=document.querySelector('#forms [data-calc="bandhrs"][data-sh="'+sh+'"]'); if(el) el.textContent = hrs(sumTotals(forms.filter(f=>okShift(f.shift)===sh).map(formTotals)).hours); });
   forms.forEach(f=>{
@@ -1921,9 +2079,9 @@ function wireForms(){
     const live = () => { f = findForm(fid); return !!f; };
     const ln = () => { if(!f) return null; const pid = el.dataset.p; return (pid && f.crew.find(c=>c.punchId===pid)) || f.crew[k] || null; };
     const touch = o => { if(o) o._e = stampNow(); };
-    const redraw = ()=>{ save(); renderDaily(); };
-    const calc   = ()=>{ save(); refreshCalcs(); };
-    const soft   = ()=>{ save(); };
+    const redraw = ()=>{ markWork(); renderDaily(); };
+    const calc   = ()=>{ markWork(); refreshCalcs(); };
+    const soft   = ()=>{ markWork(); };
     switch(a){
       case "jobSel":   el.onchange = e=>{ if(!live()) return; f.jobId=e.target.value; touch(f); calc(); }; break;
       case "shift":    el.onchange = e=>{ if(!live()) return; f.shift=okShift(e.target.value); touch(f); redraw(); }; break;
@@ -1934,19 +2092,20 @@ function wireForms(){
         if(!live()) return;
         snapshot(true, "before deleting a job form");
         lastDeleted = {date:curDate, form:JSON.parse(JSON.stringify(f))};
-        const r = dayRec(curDate);
-        const i = r.forms.indexOf(f);
-        if(i >= 0) r.forms.splice(i,1); else r.forms = r.forms.filter(x=>x.id!==f.id);
-        r.gone = [...new Set([...(r.gone||[]), f.id])];
-        (f.crew||[]).forEach(c=>{ const p=c && c.punchId && db.punches.find(x=>x.id===c.punchId); if(p) p.noLine=true; });
+        const w = workFor(curDate);
+        w.forms = w.forms.filter(x=>x!==f && x.id!==f.id);
+        w.gone = [...new Set([...w.gone, f.id])];
+        (f.crew||[]).forEach(c=>{ if(c && c.punchId) w.noLine.add(c.punchId); });
         redraw();
       }; break;
       case "crewAdd":  el.onclick  = ()=>{ if(!live()) return; f.crew.push({empId:"",rt:"",ot:"",dt:"",_e:stampNow()}); redraw(); }; break;
       case "crewDel":  el.onclick  = ()=>{ if(!live()) return; const c=ln(); if(!c) return;
-        if(c.punchId){ const p=db.punches.find(x=>x.id===c.punchId); if(p) p.noLine=true; }
+        if(c.punchId) workFor(curDate).noLine.add(c.punchId);
         else if(c.empId){ f.xh = f.xh||{}; f.xh["h:"+c.empId] = stampNow(); }       // so a stale copy cannot bring him back
         f.crew = f.crew.filter(x=>x!==c); redraw(); }; break;
-      case "crewEmp":  el.onchange = e=>{ if(!live()) return; const c=ln(); if(!c) return; c.empId=e.target.value; touch(c); calc(); }; break;
+      case "crewEmp":  el.onchange = e=>{ if(!live()) return; const c=ln(); if(!c) return;
+        if(!c.punchId && c.empId && c.empId!==e.target.value){ f.xh = f.xh||{}; f.xh["h:"+c.empId] = stampNow(); }   // the line moved to another man: the old name does not come back
+        c.empId=e.target.value; touch(c); calc(); }; break;
       case "crewH":    el.onchange = e=>{ if(!live()) return; const c=ln(); if(!c) return; c[el.dataset.h]=e.target.value; touch(c); calc(); }; break;
       case "matAdd":   el.onclick  = ()=>{ if(!live()) return; f.materials.push({id:uid(),qty:"",desc:"",unit:"",_e:stampNow()}); redraw(); }; break;
       case "matDel":   el.onclick  = ()=>{ if(!live()) return; const m=f.materials[k]; if(!m) return;
@@ -2012,6 +2171,7 @@ function cellLine(date, jobId, empId){
   if(!f) return null;
   return f.crew.find(c=>c.empId===empId) || null;
 }
+const cellLines = (date, jobId, empId) => { const f = dayForm(date, jobId); return f ? f.crew.filter(c=>c.empId===empId) : []; };
 function weekBlock(j, days){
   const $$ = money$(), p = pm(j.pmId);
   const forms = days.map(d=>dayForm(d, j.id));
@@ -2024,11 +2184,12 @@ function weekBlock(j, days){
   const rows = emps.map(e=>{
     let sum=0, cost=0;
     const cells = days.map((d,di)=>{
-      const line = cellLine(d, j.id, e.id);
+      const ls = cellLines(d, j.id, e.id), many = ls.length > 1;
       const vals = WKCOLS[di].map(h=>{
-        const v = line ? (+line[h]||0) : 0; sum+=v;
+        const v = ls.reduce((a,l)=>a+(+l[h]||0), 0); sum+=v;
         const r=lineRate(e, j, wkCur()), m=h==="rt"?1:h==="ot"?db.settings.otMult:db.settings.dtMult; cost+=v*r*m;
-        return '<input class="wk num" type="number" step="0.25" min="0" data-w="'+j.id+'|'+d+'|'+e.id+'|'+h+'|'+wkCur()+'" value="'+(v||"")+'" placeholder="'+h.toUpperCase()+'" title="'+h.toUpperCase()+'">';
+        return '<input class="wk num" type="number" step="0.25" min="0" data-w="'+j.id+'|'+d+'|'+e.id+'|'+h+'|'+wkCur()+'" value="'+(v||"")+'" placeholder="'+h.toUpperCase()+'"'+
+          (many ? ' disabled title="'+ls.length+' lines for him on the daily that day (he was on this job twice): the sum shows here, edit them on the Daily"' : ' title="'+h.toUpperCase()+'"')+'>';
       }).join("");
       return '<td class="n wkcell">'+vals+"</td>";
     }).join("");
@@ -2072,7 +2233,12 @@ function wireWeekly(){
     if(!line){ if(!(+v)) return; line={empId,rt:"",ot:"",dt:""}; f.crew.push(line); }
     line[h] = v; line._e = stampNow();
     if(!(+line.rt)&&!(+line.ot)&&!(+line.dt)&&!line.punchId){ f.crew = f.crew.filter(c=>c!==line); f.xh = f.xh||{}; f.xh["h:"+empId] = stampNow(); }
-    save(); renderWeekly();
+    save();
+    setTimeout(()=>{                                                        // by now the cursor has landed where Tab took it: redraw, then put it back there
+      const ae = document.activeElement, nx = ae && ae.dataset ? (ae.dataset.w || ae.dataset.wn) : null;
+      renderWeekly();
+      if(nx){ const n = document.querySelector('#weekOut [data-w="'+nx+'"], #weekOut [data-wn="'+nx+'"]'); if(n){ n.focus(); if(n.select) n.select(); } }
+    }, 0);
   });
   document.querySelectorAll("#weekOut [data-wn]").forEach(el=>el.oninput=ev=>{
     const [jobId,date,sh] = el.dataset.wn.split("|"); wkSec = okShift(sh);
@@ -2294,6 +2460,23 @@ function jobCardsHTML(card){
   return fl.map(f=>{ const js=projOf(f,vj); return head(f, js.length)+js.map(card).join(""); }).join("")+
     (loose.length ? (fl.length?head("No folder", loose.length):"")+loose.map(card).join("") : "");
 }
+function rndNote(j){
+  const q = jobQuitIso(j, "2026-01-05"), st = T.atHM("2026-01-05", jobStart(j));
+  if(!j.rnd) return "Off: punches pay their real clock times (less the meal), rounded as Settings says.";
+  if(!q || !st) return "Set a start time first.";
+  const g = jobGrace(j), gf = new Date(new Date(q).getTime()-g*60000).toISOString();
+  return "Day shift pays from "+T.clock(st)+" however early he clocks in. "+
+    (g ? "Out before "+T.clock(gf)+" rounds down to the half hour; "+T.clock(gf)+" or later pays through "+T.clock(q)+"; " : "Out before "+T.clock(q)+" rounds down to the half hour; ")+
+    "past "+T.clock(q)+" both ends go to the nearest half hour. Night shift: nearest half hour. Real clock times stay on the Digital Timesheet.";
+}
+async function offerRefigure(j){
+  const from = D.add(D.weekEnd(D.iso(new Date())),-6);
+  const ps = db.punches.filter(p=>p.jobId===j.id && p.tout && p.date>=from);
+  if(!ps.length) return;
+  if(!await ask("Re-figure the "+ps.length+" finished punch"+(ps.length===1?"":"es")+" on "+j.po+" this week by the new rule? Hand-moved OT and DT on the dailies stay as they are.")) return;
+  snapshot(true, "before re-figuring "+j.po);
+  refigure(ps); save(); renderDaily(); tell("Done. "+ps.length+" punch"+(ps.length===1?"":"es")+" on "+j.po+" re-figured.");
+}
 function renderJobs(){
   const mk = canMarkup();
   const supers = db.employees.filter(e=>e.role==="super" && e.active!==false);
@@ -2339,6 +2522,9 @@ function renderJobs(){
           '<label class="f jnum" style="flex-basis:130px">Start time<input type="time" data-j="'+j.id+'" data-p="start" value="'+esc(j.start||"")+'" placeholder="'+esc(db.settings.startTime||"07:00")+'"></label>'+
           '<label class="f jsel">Night shift<select data-j="'+j.id+'" data-p="nightShift"><option value="">Company default</option><option value="swing"'+(j.nightShift==="swing"?" selected":"")+'>Swing (+'+(+db.settings.swingPct||0)+'%)</option><option value="grave"'+(j.nightShift==="grave"?" selected":"")+'>Graveyard (+'+(+db.settings.gravePct||0)+'%)</option><option value="none"'+(j.nightShift==="none"?" selected":"")+'>No premium</option></select></label>'+
           '<span class="mini" style="padding-bottom:10px">Quits at '+(function(){ const st=T.atHM("2026-01-05", jobStart(j)); if(!st) return "?"; const q=new Date(new Date(st).getTime()+((jobSched(j)==="4x10"?10:8)+(+db.settings.mealMin||0)/60)*3600000); return T.clock(q.toISOString()); })()+' · OT until '+(function(){ const st=T.atHM("2026-01-05", jobStart(j)); if(!st) return "?"; const ten=jobSched(j)==="4x10"; const q=new Date(new Date(st).getTime()+((ten?10:8)+(ten?2:4)+(+db.settings.mealMin||0)/60)*3600000); return T.clock(q.toISOString()); })()+', then double time</span></div>'+
+        '<div class="jrow jrnd"><label class="jact"><input type="checkbox" data-j="'+j.id+'" data-p="rnd"'+(j.rnd?" checked":"")+'> Round to the half hour</label>'+
+          '<label class="f jsel">Early-out grace<select data-j="'+j.id+'" data-p="rndGrace"'+(j.rnd?"":" disabled")+'>'+[0,15,30,45,60].map(g=>'<option value="'+g+'"'+(jobGrace(j)===g?" selected":"")+'>'+(g?g+" min":"None")+'</option>').join("")+'</select></label>'+
+          '<span class="mini" style="padding-bottom:10px">'+esc(rndNote(j))+'</span></div>'+
         '<div class="jrow jsite"><label class="f jloc">Job site location (lat, long)<input type="text" data-jsite="'+j.id+'" value="'+(j.site?j.site.lat+", "+j.site.lon:"")+'" placeholder="Paste from Google Maps, or use this device"></label>'+
           '<label class="f jnum">Radius (ft)<input class="num" type="number" min="100" step="100" data-j="'+j.id+'" data-p="siteFt" value="'+(hasNum(j.siteFt)?j.siteFt:"")+'" placeholder="'+(+db.settings.geoFt||1000)+'"></label>'+
           '<button class="b ghost sm" data-jhere="'+j.id+'">Use this device\'s location</button>'+
@@ -2353,7 +2539,9 @@ function renderJobs(){
   $("jobTable").querySelectorAll("[data-j]").forEach(el=>{
     const j = job(el.dataset.j), p = el.dataset.p;
     el.onchange = ev => {
-      if(p==="sched"||p==="start"||p==="nightShift"){ j[p] = ev.target.value; if(p==="start" && j.start && !/^\d{2}:\d{2}$/.test(j.start)) j.start=""; save(); renderJobs(); return; }
+      if(p==="rnd"){ j.rnd = ev.target.checked; if(!j.rnd) delete j.rnd; save(); renderJobs(); offerRefigure(j); return; }
+      if(p==="rndGrace"){ j.rndGrace = +ev.target.value||0; save(); renderJobs(); offerRefigure(j); return; }
+      if(p==="sched"||p==="start"||p==="nightShift"){ j[p] = ev.target.value; if(p==="start" && j.start && !/^\d{2}:\d{2}$/.test(j.start)) j.start=""; save(); renderJobs(); if(j.rnd) offerRefigure(j); return; }
       if(p==="oh"||p==="profit") j[p] = ev.target.value==="" ? null : (+ev.target.value||0);
       else if(p==="markupOff"){ j.markupOff = ev.target.checked; save(); renderJobs(); return; }
       else j[p] = p==="active" ? ev.target.checked : ev.target.value;
@@ -2954,16 +3142,7 @@ $("mealApply").onclick = async ()=>{
   if(!ps.length) return tell("No finished punches this week yet.");
   if(!await ask("Re-figure "+ps.length+" punch"+(ps.length===1?"":"es")+" since "+D.us(from)+" with a "+(+db.settings.mealMin||0)+" minute meal? Hand-moved OT and DT on the dailies stay as they are; only the Reg line from each punch changes.")) return;
   snapshot(true, "before re-figuring meal periods");
-  /* keep any OT/DT moved by hand on the daily; Reg takes up the rest */
-  ps.forEach(p=>{
-    p.hours = punchHours(p);
-    let line=null;
-    Object.keys(db.days).forEach(d=>dayRec(d).forms.forEach(f=>{ const l=f.crew.find(c=>c.punchId===p.id); if(l) line=l; }));
-    if(!line){ post(p); return; }
-    if(!line._e){ const s=lineSplit(p); line.rt=s.rt; line.ot=s.ot||""; line.dt=s.dt||""; return; }
-    const moved = (+line.ot||0)+(+line.dt||0);
-    line.rt = Math.max(0, Math.round((p.hours-moved)*100)/100); line._e = stampNow();
-  });
+  refigure(ps);                                                            // keeps any OT/DT moved by hand on the daily; Reg takes up the rest
   save(); renderDaily(); tell("Done. "+ps.length+" punch"+(ps.length===1?"":"es")+" updated.");
 };
 $("sBackup").onclick = ()=>{
@@ -3703,6 +3882,7 @@ function rerender(){
   if(db.kiosk){ if(K.screen==="pin" || K.screen==="menu") drawK(); return; }
   if(editing() || document.querySelector("dialog[open]")) return;
   const v = (document.querySelector('nav button[aria-current="true"]')||{}).dataset; const cur = v && v.v;
+  if(cur==="daily" && dailyDirty()){ saveBar(); return; }                 // their typing stays put; Save folds the new punches in
   try{
     if(cur==="daily") renderDaily(); else if(cur==="weekly") renderWeekly(); else if(cur==="clock") renderClock(); else if(cur==="safety") renderSafety();
     else if(cur==="timeoff") renderTimeoff(); else if(cur==="crew") renderCrew(); else if(cur==="jobs") renderJobs();
@@ -4012,13 +4192,13 @@ function wireK(){
           if(!p){ const who=K.empId; K.screen="locating"; drawK();
             freshPunches(who).then(()=>{ const p2=clockOut(who); const j2=p2?job(p2.jobId):null;
               if(p2 && geoMode()!=="off") (K.geoP || geoNow()).then(fix=>{ p2.geoOut = geoStamp(j2, fix); save(); });
-              K.msg = p2 ? "Clocked out at "+T.clock(p2.tout)+".  "+hrs(p2.hours)+" hours on "+(j2?crewJobTitle(j2):"the job")+"." : "You were not clocked in.";
+              K.msg = p2 ? "Clocked out at "+T.clock(p2.tout)+".  "+hrs(p2.hours)+" hours on "+(j2?crewJobTitle(j2):"the job")+"."+paidNote(p2) : "You were not clocked in.";
               K.empId=who; if(p2 && j2 && dueFor(who, j2, p2).length){ K.sj=j2.id; K.sp=p2.id; K.acked=[]; K.screen="safety"; drawK(); return; }
               K.screen="done"; drawK(); });
             break; }
           const j = p ? job(p.jobId) : null;
           if(p && geoMode()!=="off") (K.geoP || geoNow()).then(fix=>{ p.geoOut = geoStamp(j, fix); save(); });
-          K.msg = p ? "Clocked out at "+T.clock(p.tout)+".  "+hrs(p.hours)+" hours on "+(j?crewJobTitle(j):"the job")+"."+(p.long?" That is over 14 hours since you clocked in, so the office will check it.":"")
+          K.msg = p ? "Clocked out at "+T.clock(p.tout)+".  "+hrs(p.hours)+" hours on "+(j?crewJobTitle(j):"the job")+"."+paidNote(p)+(p.long?" That is over 14 hours since you clocked in, so the office will check it.":"")
                   : "You were not clocked in.";
           if(p && j && dueFor(K.empId, j, p).length){ K.sj=j.id; K.sp=p.id; K.acked=[]; K.screen="safety"; drawK(); break; }   // posted after he clocked in: catch him on the way out
           K.screen="done"; drawK(); break;
@@ -4061,7 +4241,7 @@ function wireK(){
     const p = clockIn(K.empId, el.dataset.j);
     if(p && g){ p.geoIn = g; save(); }
     else if(p && mode!=="off"){ const gp = K.geoP || geoNow(); gp.then(fix=>{ p.geoIn = geoStamp(j, fix); save(); }); }
-    K.msg = p ? (moved ? "Moved to "+crewJobTitle(j)+" at "+T.clock(p.tin)+". "+hrs(moved.hours)+" hours on "+crewJobTitle(job(moved.jobId))+"." : "Clocked in on "+crewJobTitle(j)+" at "+T.clock(p.tin)+".") : "You are already clocked in.";
+    K.msg = p ? (moved ? "Moved to "+crewJobTitle(j)+" at "+T.clock(p.tin)+". "+hrs(moved.hours)+" hours on "+crewJobTitle(job(moved.jobId))+"."+paidNote(moved) : "Clocked in on "+crewJobTitle(j)+" at "+T.clock(p.tin)+"."+paidNote(p)) : "You are already clocked in.";
     if(p && dueFor(K.empId, j, p).length){ K.sj = j.id; K.sp = p.id; K.acked = []; K.screen="safety"; drawK(); return; }   // PTP or toolbox talk to sign first
     K.screen="done"; drawK();
   });
@@ -4189,6 +4369,8 @@ function renderClock(){
   let html = "";
   const long = list.filter(p=>p.tout && (new Date(p.tout)-new Date(p.tin)) > 14*3600000);
   if(long.length) html += '<div class="flag">'+long.length+' punch'+(long.length===1?"":"es")+' over 14 hours (probably a missed clock-out): '+long.map(p=>esc((emp(p.empId)||{}).name||"?")+" "+hrs(p.hours)+" h").join(", ")+". Fix the Out time here.</div>";
+  const stale = list.filter(stalePunch);
+  if(stale.length) html += '<div class="flag warn">'+stale.length+' punch'+(stale.length===1?" was":"es were")+' figured under an older rule (meal period, rounding, or a job\'s half-hour rule), so the sheets still carry the old hours. <button class="b sm" id="tcRefig">Re-figure '+(stale.length===1?"it":"them")+'</button></div>';
   const crewKey = id => { const e=emp(id); if(!e) return "~"; if(e.role==="foreman") return e.id; if(OFFICE.includes(e.role)) return "office"; const f=bossOf(id,"foreman"); return f ? f.id : "none"; };
   const crewLabel = k => k==="office" ? "Supervision" : k==="none" ? "No foreman set" : k==="~" ? "Unknown" : ((emp(k)||{}).name||"?")+"'s crew";
   const gmode = (()=>{ let v="foreman"; try{ v=localStorage.getItem("adman_field_tcgroup")||"foreman"; }catch(e){} return v==="0"?"none":v==="1"?"foreman":v; })();
@@ -4219,7 +4401,7 @@ function renderClock(){
           (p.tout?'<input type="time" data-pp="'+p.id+'" data-f="tout" value="'+T.hm(p.tout)+'">':'<button class="b ghost sm" data-pclose="'+p.id+'">Clock out now</button>')+"</div></td>"+
           '<td class="meal" data-l="Meal"><input type="checkbox" data-pp="'+p.id+'" data-f="meal" title="Unpaid meal taken"'+(p.noMeal?"":" checked")+"></td>"+
           '<td class="loc">'+geoCell(p)+(p.ack && Object.keys(p.ack).length ? '<span class="chip appr" title="Opened the safety sign-in">Safety &#10003;</span>' : "")+"</td>"+
-          '<td class="n num hrs" data-l="Hours">'+(p.tout?hrs(p.hours):"")+"</td>"+($$?'<td class="n num cost" data-l="Cost">'+(p.tout?money(p.hours*r):"")+"</td>":"")+
+          '<td class="n num hrs" data-l="Hours">'+(p.tout?hrs(p.hours):"")+(function(){ const s=paidSpan(p); return s.rounded ? '<div class="mini" title="The job rounds to the half hour; these are the times it pays">'+(s.tout?"pays "+T.clock(s.tin)+"–"+T.clock(s.tout):"from "+T.clock(s.tin))+'</div>' : ""; })()+"</td>"+($$?'<td class="n num cost" data-l="Cost">'+(p.tout?money(p.hours*r):"")+"</td>":"")+
           '<td class="del" style="width:26px"><button class="x" data-pdel="'+p.id+'">&times;</button></td></tr>';
       };
   let body = "";
@@ -4243,6 +4425,13 @@ function renderClock(){
       '<p class="hint">Every punch writes a line on that day\'s job form for its shift, split into Reg, OT and DT by the schedule rules. Change a time here and the daily sheet changes with it.</p>';
   $("tcOut").innerHTML = html;
   const tg=$("tcGroup"); if(tg) tg.onchange = ev=>{ try{ localStorage.setItem("adman_field_tcgroup", ev.target.value); }catch(e){} renderClock(); };
+  const rf=$("tcRefig"); if(rf) rf.onclick = async ()=>{
+    const ps = db.punches.filter(p=>p.date===tcDate && (canSeeJob(p.jobId) || canSeeEmp(p.empId)) && inProj(p)).filter(stalePunch);
+    if(!ps.length) return renderClock();
+    if(!await ask("Re-figure "+ps.length+" punch"+(ps.length===1?"":"es")+" on "+D.us(tcDate)+" by today's rules? Hand-moved OT and DT on the dailies stay as they are.")) return;
+    snapshot(true, "before re-figuring "+D.us(tcDate));
+    refigure(ps); save(); renderClock(); renderDaily(); tell("Done. "+ps.length+" punch"+(ps.length===1?"":"es")+" re-figured.");
+  };
   const fx=$("tcFixDbl"); if(fx) fx.onclick = async ()=>{ const d=doublesOn(tcDate).filter(ps=>canSeeEmp(ps[0].empId)); if(!d.length) return renderClock();
     if(!await ask("Sort out "+d.length+" double clock-in"+(d.length===1?"":"s")+" on "+D.us(tcDate)+"? The first punch stays; a duplicate on the same job is removed.", true)) return;
     snapshot(true, "before fixing double clock-ins"); let n=0; d.forEach(ps=>{ n+=fixDoubles(ps); }); save(); renderClock(); renderDaily(); tell(n+" punch"+(n===1?"":"es")+" sorted out."); };
@@ -4345,7 +4534,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v45";
+const APP_VERSION = "v46";
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
