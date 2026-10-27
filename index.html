@@ -131,6 +131,16 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
 .flag{border-left:4px solid var(--red);background:rgba(189,29,35,.07);padding:9px 11px;margin:10px 0;font-size:13px;border-radius:0 8px 8px 0}
 .flag.good{border-left-color:var(--ok);background:rgba(30,122,70,.09)}
 .flag.warn{border-left-color:var(--warn);background:rgba(184,114,12,.1)}
+.abst td.idx{color:var(--ink-2);width:34px;font-family:"IBM Plex Mono",monospace;font-size:12px}
+.abst td.no{font-family:"IBM Plex Mono",monospace;white-space:nowrap}
+.abst td.who{font-weight:600}
+@media print{
+  body.pabs *{visibility:hidden}
+  body.pabs #absCard, body.pabs #absCard *{visibility:visible}
+  body.pabs #absCard{position:absolute;left:0;top:0;width:100%;border:0;box-shadow:none;margin:0}
+  body.pabs #absCard .row{display:none}
+  body.pabs .abst th, body.pabs .abst td{font-size:10.5pt;padding:4px 6px}
+}
 .savebar{position:sticky;top:calc(env(safe-area-inset-top,0px) + 114px);z-index:3;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 14px;margin:0 0 10px;border-radius:10px;background:var(--paper);border:1px solid var(--line);box-shadow:0 3px 12px rgba(0,0,0,.10);font-size:14px}
 .savebar.dirty{border-color:var(--warn);background:linear-gradient(rgba(184,114,12,.14),rgba(184,114,12,.14)),var(--paper)}
 .savebar .spacer{flex:1}
@@ -305,6 +315,13 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
   #tcOut tbody tr.grp{display:block;padding:8px 0 2px}
   #tcOut tbody tr.grp td{display:block;border-left:0!important;padding:6px 8px;border-radius:8px}
   #tcOut{overflow-x:visible}
+  .abst,.abst tbody{display:block}
+  .abst thead{display:none}
+  .abst tr{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;padding:9px 0;border-bottom:1px solid var(--line-2)}
+  .abst td{display:block;border:0;padding:0;min-width:0}
+  .abst td.idx{display:none}
+  .abst td.who{grid-column:1/-1;font-size:16px}
+  .abst td[data-l]:not(.who)::before{content:attr(data-l);display:block;font-size:11px;color:var(--ink-2);margin-bottom:1px;font-family:Inter,sans-serif;font-weight:500}
   .card>h2{font-size:17px}
   .row>label.f{flex:1 1 150px}
   .datenav{flex-basis:100%}
@@ -539,6 +556,24 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
     </div>
     <p class="hint">The download is an Excel workbook: a Summary tab with every breakdown below, then one tab per project manager and one per job with the day-by-day detail. <strong>Employee</strong> pulls one man's report: type part of his name or his number and pick him from the list. <strong>Under</strong> narrows everything to one foreman's, superintendent's or PM's people, by the reporting chain set on the Employees tab.</p>
     <div id="rOut"></div>
+  </div></div>
+  <div class="card" id="absCard"><h2>Absentee list<span class="tag">who is not on the clock at a given time</span></h2><div class="body">
+    <div class="row">
+      <label class="f">Date<input type="date" id="aDate"></label>
+      <label class="f">Time<input type="time" id="aTime"></label>
+      <button class="b ghost sm" id="aNow">Now</button>
+      <label class="f">Crew<select id="aCrew"><option value="day">Day crew</option><option value="night">Night crew</option><option value="all">Day and night</option></select></label>
+      <label class="f">Foreman<select id="aFm"></select></label>
+      <label class="f">Sort by<select id="aSort"><option value="last">Last name</option><option value="first">First name</option><option value="fm">Foreman, then last name</option></select></label>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <label class="jact"><input type="checkbox" id="aSup" checked> Include supers and general foremen</label>
+      <label class="jact"><input type="checkbox" id="aLeft"> Also list men who already clocked out</label>
+      <div class="spacer"></div>
+      <button class="b ghost" id="aPrint">Print</button>
+      <button class="b red" id="aGo">Download absentee list</button>
+    </div>
+    <div id="absOut"></div>
   </div></div>
   <div id="reportOut"></div>
 </section>
@@ -784,6 +819,46 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       '<drawing r:id="rId1"/></worksheet>';
   }
 
+  /* Every formula on the forms is a plain SUM of cells we fill (SUM(C7+F7+...), SUM(U7:U21)). The template's stored
+     result is 0, and Excel on an iPad or phone, and every preview (Outlook, Teams, SharePoint, Files), shows the stored
+     result rather than recalculating. So work each one out here and store the real number. Anything that is not a
+     plain sum loses its stored result, which makes Excel compute it. */
+  function fillCached(xml) {
+    const vals = {};
+    const col = (c) => c.split("").reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0);
+    const get = (c, r) => vals[c + r] || 0;
+    const evalSum = (f) => {
+      const m = f.replace(/\s+/g, "").match(/^(?:SUM\()?([A-Z$0-9:+,]+)\)?$/i);
+      if (!m) return null;
+      let t = 0;
+      for (const a of m[1].split(/[+,]/)) {
+        if (!a) continue;
+        const rg = a.replace(/\$/g, "").match(/^([A-Z]{1,3})(\d+)(?::([A-Z]{1,3})(\d+))?$/);
+        if (!rg) return null;
+        if (!rg[3]) { t += get(rg[1], +rg[2]); continue; }
+        const c0 = col(rg[1]), c1 = col(rg[3]), r0 = Math.min(+rg[2], +rg[4]), r1 = Math.max(+rg[2], +rg[4]);
+        for (const k of Object.keys(vals)) {
+          const km = k.match(/^([A-Z]{1,3})(\d+)$/); const cc = col(km[1]), rr = +km[2];
+          if (cc >= Math.min(c0, c1) && cc <= Math.max(c0, c1) && rr >= r0 && rr <= r1) t += vals[k];
+        }
+      }
+      return t;
+    };
+    return xml.replace(/<c r="([A-Z]{1,3})(\d+)"([^>]*?)(\/>|>([\s\S]*?)<\/c>)/g, (whole, c, r, attrs, tail, inner) => {
+      if (!inner) return whole;
+      const fm = inner.match(/^(<f[^>]*>([^<]*)<\/f>)/);
+      if (!fm) {
+        if (!/ t="(s|inlineStr|str|b|e)"/.test(attrs)) { const v = inner.match(/<v>([^<]*)<\/v>/); if (v && v[1] !== "" && !isNaN(+v[1])) vals[c + r] = +v[1]; }
+        return whole;
+      }
+      const v = evalSum(fm[2]);
+      const a = attrs.replace(/ t="[^"]*"/, "");
+      if (v === null) return '<c r="' + c + r + '"' + a + ">" + fm[1] + "</c>";       // no stored result: Excel works it out
+      vals[c + r] = v;
+      return '<c r="' + c + r + '"' + a + ">" + fm[1] + "<v>" + r2(v) + "</v></c>";
+    });
+  }
+
   /* ------------------------------------------------------ weekly time sheet */
   const WBLK = 45;
   function weeklySheet(tpl, blocks) {
@@ -892,14 +967,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = ((n - m) / 26) | 0; }
     return s;
   }
-  function summarySheet(rows) {
+  function summarySheet(rows, widths, landscape) {
     const body = rows.map((cells, i) => {
       const r = i + 1;
       return '<row r="' + r + '">' + cells.map((c, j) => {
         const ref = colName(j + 1) + r;
         if (c === null || c === undefined || c === "") return '<c r="' + ref + '" s="0"/>';
-        const bold = c && c.bold ? 2 : 0;
-        const v = c && c.v !== undefined ? c.v : c;
+        const cell = typeof c === "object";             // {v, bold}; a plain string has a built-in .bold method, so test the type
+        const bold = cell && c.bold ? 2 : 0;
+        const v = cell && c.v !== undefined ? c.v : c;
         return typeof v === "number"
           ? '<c r="' + ref + '" s="' + bold + '" t="n"><v>' + r2(v) + "</v></c>"
           : '<c r="' + ref + '" s="' + bold + '" t="inlineStr"><is><t xml:space="preserve">' +
@@ -908,11 +984,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     }).join("");
     return XML +
       '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="' + RELS + '">' +
+      (landscape ? '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' : "") +
       '<dimension ref="A1:J' + Math.max(rows.length, 1) + '"/>' +
       '<sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="12.5"/>' +
-      '<cols><col min="1" max="1" width="24" customWidth="1"/><col min="2" max="2" width="32" customWidth="1"/>' +
-      '<col min="3" max="10" width="13" customWidth="1"/></cols><sheetData>' + body + "</sheetData>" +
-      '<pageMargins left="0.5" right="0.5" top="0.75" bottom="0.75" header="0.3" footer="0.3"/></worksheet>';
+      (widths && widths.length
+        ? "<cols>" + widths.map((w, i) => '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>').join("") + "</cols>"
+        : '<cols><col min="1" max="1" width="24" customWidth="1"/><col min="2" max="2" width="32" customWidth="1"/>' +
+          '<col min="3" max="10" width="13" customWidth="1"/></cols>') + "<sheetData>" + body + "</sheetData>" +
+      '<pageMargins left="0.5" right="0.5" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>' +
+      (landscape ? '<pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/>' : "") + "</worksheet>";
   }
 
   /* ------------------------------------------------------ package */
@@ -950,7 +1030,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     zip.file("xl/workbook.xml", XML +
       '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="' + RELS + '"><sheets>' +
       names.map((nm, i) => '<sheet name="' + esc(nm).slice(0, 31) + '" sheetId="' + (i + 1) +
-        '" r:id="rId' + (i + 1) + '"/>').join("") + "</sheets></workbook>");
+        '" r:id="rId' + (i + 1) + '"/>').join("") + '</sheets><calcPr fullCalcOnLoad="1"/></workbook>');
     zip.file("xl/_rels/workbook.xml.rels", XML +
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
       names.map((_, i) => '<Relationship Id="rId' + (i + 1) + '" Type="' + RELS +
@@ -971,7 +1051,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         '<Relationship Id="rId1" Type="' + RELS + '/image" Target="../media/image1.jpeg"/></Relationships>');
     });
     summaries.forEach((s, j) =>
-      zip.file("xl/worksheets/sheet" + (sheets.length + j + 1) + ".xml", summarySheet(s.rows)));
+      zip.file("xl/worksheets/sheet" + (sheets.length + j + 1) + ".xml", summarySheet(s.rows, s.widths, s.landscape)));
     return zip;
   }
 
@@ -980,7 +1060,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     const tpl = parse(T, WBLK);
     return pack(T, pmSheets.map((s) => ({
       name: s.name,
-      xml: weeklySheet(tpl, s.blocks),
+      xml: fillCached(weeklySheet(tpl, s.blocks)),
       drawing: drawingXml(tpl, s.blocks.length, WBLK),
     })), summaries || [], JSZipCtor);
   }
@@ -991,7 +1071,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     const tpl = parse(T, DBLK);
     return pack(T, days.map((d) => ({
       name: d.tab,
-      xml: dailySheet(tpl, d, T.merges),
+      xml: fillCached(dailySheet(tpl, d, T.merges)),
       drawing: drawingXml(tpl, d.forms.length, DBLK),
     })), [], JSZipCtor);
   }
@@ -1722,16 +1802,14 @@ function punchHours(p){
   return roundHrs(Math.max(0, elapsed - mealHrs(p, elapsed)));
 }
 /* after a rule changes (meal, rounding, a job's half-hour rule): hours again from the clock times, and the daily
-   line re-split unless the office moved OT/DT by hand, in which case Reg takes up the difference */
+   line re-split - unless the office typed or changed that line, which is left exactly as they made it */
 function refigure(ps){
   ps.forEach(p=>{
     p.hours = punchHours(p);
     let line=null;
     Object.keys(db.days).forEach(d=>dayRec(d).forms.forEach(f=>{ const l=f.crew.find(c=>c.punchId===p.id); if(l) line=l; }));
     if(!line){ post(p); return; }
-    if(!line._e){ const s=lineSplit(p); line.rt=s.rt; line.ot=s.ot||""; line.dt=s.dt||""; return; }
-    const moved = (+line.ot||0)+(+line.dt||0);
-    line.rt = Math.max(0, Math.round((p.hours-moved)*100)/100); line._e = stampNow();
+    if(!line._e){ const s=lineSplit(p); line.rt=s.rt; line.ot=s.ot||""; line.dt=s.dt||""; }   // a line the office typed or changed is theirs: never re-figured
   });
   return ps.length;
 }
@@ -1739,8 +1817,9 @@ const lineOf = p => { const r=db.days[p.date]; if(!r) return null; for(const f o
 /* figured under an older rule: the hours, or the Reg/OT/DT split on the daily, no longer match what the rules say today */
 function stalePunch(p){
   if(!p.tout) return false;
+  const l = lineOf(p); if(l && l._e) return false;                        // typed by the office: theirs, nothing to re-figure
   if(Math.abs((+p.hours||0) - punchHours(p)) > 0.005) return true;
-  const l = lineOf(p); if(!l || l._e) return false;
+  if(!l) return false;
   const s = lineSplit(p), d = (a,b) => Math.abs((+a||0)-(+b||0)) > 0.011;
   return d(l.rt,s.rt) || d(l.ot,s.ot) || d(l.dt,s.dt);
 }
@@ -2056,6 +2135,16 @@ async function saveDaily(){
   const W = WORK, date = W.date, now = stampNow();
   const sv = $("dSave"); if(sv){ sv.disabled = true; sv.textContent = "Saving…"; }
   W.noLine.forEach(id=>{ const p = db.punches.find(x=>x.id===id); if(p) p.noLine = true; });
+  /* a form moved to another job or shift here: its punches go with it, or the next sync would put the men back */
+  W.forms.forEach(f=>{
+    if(!f.jobId || !(f._e && f._e >= W.since)) return;
+    (f.crew||[]).forEach(c=>{
+      const p = c.punchId && db.punches.find(x=>x.id===c.punchId); if(!p || p.date!==date) return;
+      if(p.jobId===f.jobId && okShift(p.shift)===okShift(f.shift)) return;
+      p.jobId = f.jobId; p.shift = okShift(f.shift); delete p.jobs; if(p.ruleJob) p.ruleJob = f.jobId;
+      if(p.tout) p.hours = punchHours(p);
+    });
+  });
   const fresh = o => { if(o && o._e && o._e >= W.since) o._e = now; };          // edited here: the save moment is what counts
   W.forms.forEach(f=>{ fresh(f); (f.crew||[]).forEach(fresh); (f.materials||[]).forEach(fresh);
     ["xh","xm"].forEach(k=>Object.keys(f[k]||{}).forEach(x=>{ if(f[k][x] >= W.since) f[k][x] = now; })); });
@@ -2517,7 +2606,7 @@ async function offerRefigure(j){
   const from = D.add(D.weekEnd(D.iso(new Date())),-6);
   const ps = db.punches.filter(p=>p.jobId===j.id && p.tout && p.date>=from);
   if(!ps.length) return;
-  if(!await ask("Re-figure the "+ps.length+" finished punch"+(ps.length===1?"":"es")+" on "+j.po+" this week by the new rule? Hand-moved OT and DT on the dailies stay as they are.")) return;
+  if(!await ask("Re-figure the "+ps.length+" finished punch"+(ps.length===1?"":"es")+" on "+j.po+" this week by the new rule? Lines typed or changed by hand on the dailies stay exactly as they are.")) return;
   snapshot(true, "before re-figuring "+j.po);
   refigure(ps); save(); renderDaily(); tell("Done. "+ps.length+" punch"+(ps.length===1?"":"es")+" on "+j.po+" re-figured.");
 }
@@ -2647,7 +2736,7 @@ function collect(filter){
       if(!f.jobId) return;
       const j = job(f.jobId); if(!j) return;
       if(!canSeeJob(j.id)) return;
-      const p = pm(j.pmId); if(!p) return;
+      const p = pm(j.pmId) || {id:"", name:"No PM set"};                  // a job whose PM was removed still exports
       const t = formTotals(f);
       out.push({date, we:D.weekEnd(date), dow:D.dow(date), shift:okShift(f.shift), form:f, job:j, pm:p, t});
     });
@@ -2756,6 +2845,7 @@ function fillSelect(el, opts, keep){
   if(keep && opts.some(o=>o[0]===keep)) el.value = keep;
 }
 function renderReports(){
+  try{ renderAbsent(); }catch(e){ console.error("absentee list", e); }
   const all = collect();
   const $$ = money$();
   const weeks = weeksIn(all);
@@ -2901,6 +2991,96 @@ function empCard(e, list, $$){
     '<tfoot><tr><td colspan="4">Total</td>'+[t.rt,t.ot,t.dt,t.hours].map(v=>'<td class="n num">'+hrs(v)+"</td>").join("")+($$?'<td></td><td class="n num">'+money(t.cost)+"</td>":"")+"<td></td></tr></tfoot></table></div></div>";
 }
 let REPORT = {list:[], title:""};
+/* ---------------------------------------------------------------- absentee list
+   Everyone on the crew list (employees and foremen, and supers/GFs if ticked) who is NOT on the clock at the moment
+   picked. "On the clock" = a punch that started at or before that moment and had not ended (an open punch counts for
+   16 hours, so a missed clock-out from yesterday does not hide a no-show today). Each man's work day is the report's
+   date; for the night crew before noon it is the day before, when their shift started. */
+const ABS = {live:true};
+function absNowFill(){ const n=new Date(); $("aDate").value=D.iso(n); $("aTime").value=String(n.getHours()).padStart(2,"0")+":"+String(n.getMinutes()).padStart(2,"0"); }
+function leadOf(id){ let e=emp(id), n=0; while(e && e.reportsTo && n++<20){ e=emp(e.reportsTo); if(e && (e.role==="foreman"||e.role==="super")) return e; } return null; }   // the foreman, or the GF/super he answers to
+const lastFirst = n => { const p=String(n||"").trim().split(/\s+/); return p.length>1 ? p[p.length-1]+" "+p.slice(0,-1).join(" ") : (p[0]||""); };
+function absentees(){
+  if(ABS.live || !$("aDate").value || !$("aTime").value) absNowFill();
+  const date=$("aDate").value, at=T.atHM(date, $("aTime").value); if(!at) return null;
+  const t=ms(at), H16=16*3600000, hr=new Date(at).getHours();
+  const crew=$("aCrew").value, fm=$("aFm").value, roles=$("aSup").checked ? ["employee","foreman","super"] : ["employee","foreman"], withLeft=$("aLeft").checked;
+  const pool = visCrew().filter(e=>e.active!==false && roles.includes(e.role) && (crew==="all" || (crew==="night" ? e.crew==="night" : e.crew!=="night"))
+    && (!fm || (fm==="_none" ? !leadOf(e.id) : (leadOf(e.id)||{}).id===fm)));
+  const byEmp = {}; db.punches.forEach(p=>{ if(p && p.tin && p.empId && !p.__deleted) (byEmp[p.empId]=byEmp[p.empId]||[]).push(p); });
+  const rows=[]; let on=0;
+  pool.forEach(e=>{
+    const mine = byEmp[e.id]||[];
+    if(mine.some(p=>ms(p.tin)<=t && (p.tout ? ms(p.tout)>t : t-ms(p.tin)<H16))){ on++; return; }
+    const wd = (e.crew==="night" && hr<12) ? D.add(date,-1) : date;          // his work day
+    const today = mine.filter(p=>p.date===wd);
+    const later = today.filter(p=>ms(p.tin)>t).sort((a,b)=>ms(a.tin)-ms(b.tin))[0];
+    const left = today.filter(p=>p.tout && ms(p.tout)<=t).sort((a,b)=>ms(b.tout)-ms(a.tout))[0];
+    const stale = mine.find(p=>!p.tout && ms(p.tin)<t && p.date<wd);
+    const off = (db.timeoff||[]).find(r=>r.empId===e.id && r.status!=="denied" && r.from<=wd && wd<=(r.to||r.from));
+    let status, kind;
+    if(left && later){ status="Off the clock "+T.clock(left.tout)+" to "+T.clock(later.tin); kind="gap"; }
+    else if(left){ if(!withLeft) return; status="Clocked out at "+T.clock(left.tout); kind="left"; }
+    else if(later){ status="Came in at "+T.clock(later.tin); kind="late"; }
+    else if(off){ status=(off.kind||"Time off")+(off.status==="approved" ? " (approved)" : " (asked, not approved yet)"); kind=off.status==="approved"?"off":"ask"; }
+    else { status="Not clocked in"+(stale ? " (still on the clock from "+D.us(stale.date)+": missed clock-out)" : ""); kind="none"; }
+    rows.push({e, lead:leadOf(e.id), status, kind});
+  });
+  const sort=$("aSort").value, key=r=>sort==="first" ? r.e.name : lastFirst(r.e.name);
+  rows.sort((a,b)=>(sort==="fm" ? ABC(a.lead?a.lead.name:"\uffff", b.lead?b.lead.name:"\uffff") : 0) || ABC(key(a),key(b)));
+  return {date, at, rows, pool:pool.length, on, crew};
+}
+const absLead = r => r.lead ? r.lead.name : (r.e.role==="super" ? "Supervision" : "Not set");
+const absCrewWord = c => c==="night" ? "night crew" : c==="all" ? "day and night crews" : "day crew";
+function absCounts(A){
+  const k = x => A.rows.filter(r=>r.kind===x).length, bits=[];
+  if(k("off")) bits.push(k("off")+" on approved time off");
+  if(k("ask")) bits.push(k("ask")+" asked for time off");
+  if(k("late")) bits.push(k("late")+" came in later");
+  if(k("gap")) bits.push(k("gap")+" off the clock mid-day");
+  if(k("left")) bits.push(k("left")+" already clocked out");
+  return bits;
+}
+function renderAbsent(){
+  const out=$("absOut"); if(!out) return;
+  if(!ABS.crewSet){ ABS.crewSet=true; $("aCrew").value = (ME && ME.crew==="night") ? "night" : "day"; }
+  const leads=[...new Map(visCrew().map(e=>leadOf(e.id)).filter(Boolean).map(l=>[l.id,l])).values()].sort(byName);
+  fillSelect($("aFm"), [["","All foremen"]].concat(leads.map(l=>[l.id, l.name+(l.role==="super"?" (GF / super)":"")])).concat([["_none","No foreman set"]]), $("aFm").value);
+  const A = absentees();
+  if(!A){ out.innerHTML='<div class="flag warn">Pick a date and a time.</div>'; return; }
+  const n=A.rows.length, all=A.crew==="all", bits=absCounts(A);
+  const head='<div class="flag '+(n?"warn":"good")+'" style="margin-top:10px"><strong>'+n+" of "+A.pool+"</strong> on the "+absCrewWord(A.crew)+" not on the clock at "+T.clock(A.at)+", "+DAYNAME[D.dow(A.date)]+" "+D.us(A.date)+(ABS.live?" (now)":"")+"."+
+    (bits.length?" "+bits.join(", ")+".":"")+(ABS.live?' <span class="mini">Keeps itself current; punches from the tablets land within about 20 seconds.</span>':"")+"</div>";
+  if(!n){ out.innerHTML = head; return; }
+  const chip = r => '<span class="chip '+({none:"deny",off:"appr",ask:"pend",late:"pend",gap:"pend",left:""}[r.kind]||"")+'">'+esc(r.status)+"</span>";
+  out.innerHTML = head+'<table class="abst"><thead><tr><th>#</th><th>Employee</th><th>No.</th><th>Classification</th><th>Foreman</th>'+(all?"<th>Crew</th>":"")+"<th>Status</th></tr></thead><tbody>"+
+    A.rows.map((r,i)=>'<tr><td class="idx">'+(i+1)+'</td><td class="who" data-l="Employee">'+esc(r.e.name)+'</td><td class="no" data-l="No.">'+esc(r.e.pin||"")+'</td><td data-l="Classification">'+esc(r.e.cls||"")+
+      '</td><td data-l="Foreman">'+(r.lead?esc(r.lead.name):'<span class="mini">'+absLead(r)+'</span>')+"</td>"+(all?'<td data-l="Crew">'+shiftName(r.e.crew)+"</td>":"")+'<td data-l="Status">'+chip(r)+"</td></tr>").join("")+"</tbody></table>";
+}
+["aCrew","aFm","aSort","aSup","aLeft"].forEach(id=>$(id).onchange = renderAbsent);
+["aDate","aTime"].forEach(id=>$(id).onchange = ()=>{ ABS.live=false; renderAbsent(); });
+$("aNow").onclick = ()=>{ ABS.live=true; renderAbsent(); };
+setInterval(()=>{ try{ if(ABS.live && !$("v-reports").hidden && !editing()) renderAbsent(); }catch(e){} }, 60000);   // "now" stays now
+$("aPrint").onclick = ()=>{
+  renderAbsent();
+  document.body.classList.add("pabs");
+  const done = ()=>{ document.body.classList.remove("pabs"); window.removeEventListener("afterprint", done); };
+  window.addEventListener("afterprint", done); setTimeout(done, 60000);
+  try{ window.print(); }catch(e){ done(); tell("This device would not print. Download the list instead."); }
+};
+$("aGo").onclick = async ()=>{
+  const A = absentees(); if(!A) return tell("Pick a date and a time.");
+  const B = v => ({v, bold:true}), bits = absCounts(A);
+  const rows = [[B("ADMAN ELECTRIC, INC.: Absentee list, "+absCrewWord(A.crew)+", at "+T.clock(A.at)+" on "+DAYNAME[D.dow(A.date)]+" "+D.us(A.date))],
+    [A.rows.length+" of "+A.pool+" not on the clock"+(bits.length?": "+bits.join(", "):"")+". Pulled "+D.us(D.iso(new Date()))+" "+T.clock(new Date().toISOString())+(ME&&ME.name?" by "+ME.name:"")+"."], [],
+    [B("Employee"),B("Employee No."),B("Classification"),B("Foreman"),B("Crew"),B("Status")]];
+  A.rows.forEach(r=>rows.push([r.e.name, String(r.e.pin||""), r.e.cls||"", absLead(r), shiftName(r.e.crew), r.status]));
+  try{
+    const zip = await AdmanExport.buildWeekly(TPL_WEEK, [], [{name:"Absentees", rows, widths:[26,13,18,24,9,46], landscape:true}], JSZip);
+    const blob = await zip.generateAsync({type:"blob", mimeType:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+    dl(blob, safe("Adman Absentee List - "+D.us(A.date)+" "+T.clock(A.at))+".xlsx");
+  }catch(err){ tell("Could not build the file: "+err.message); }
+};
 /* keep only the crew lines belonging to people under one leader; material stays with the whole form so it is left out here */
 function underList(list, bossId){
   const set = underOf(bossId); set.add(bossId);
@@ -3184,7 +3364,7 @@ $("mealApply").onclick = async ()=>{
   const from = D.add(D.weekEnd(D.iso(new Date())),-6);
   const ps = db.punches.filter(p=>p.tout && p.date>=from);
   if(!ps.length) return tell("No finished punches this week yet.");
-  if(!await ask("Re-figure "+ps.length+" punch"+(ps.length===1?"":"es")+" since "+D.us(from)+" with a "+(+db.settings.mealMin||0)+" minute meal? Hand-moved OT and DT on the dailies stay as they are; only the Reg line from each punch changes.")) return;
+  if(!await ask("Re-figure "+ps.length+" punch"+(ps.length===1?"":"es")+" since "+D.us(from)+" with a "+(+db.settings.mealMin||0)+" minute meal? Lines typed or changed by hand on the dailies stay exactly as they are.")) return;
   snapshot(true, "before re-figuring meal periods");
   refigure(ps);                                                            // keeps any OT/DT moved by hand on the daily; Reg takes up the rest
   save(); renderDaily(); tell("Done. "+ps.length+" punch"+(ps.length===1?"":"es")+" updated.");
@@ -3342,6 +3522,30 @@ function scoped(){
   if(sh)   label += " · "+shiftName(sh);
   return {s, recs, label};
 }
+/* what the dailies hold in this scope, and what the weekly form has no place for */
+function exportGaps(s, recs){
+  const daily = recs.reduce((a,r)=>a+r.form.crew.reduce((x,c)=>x+(c.empId?(+c.rt||0)+(+c.ot||0)+(+c.dt||0):0),0),0);
+  const wkend = [];
+  recs.forEach(r=>{ const dow = D.dow(r.date); if(dow<5) return;
+    r.form.crew.forEach(c=>{ if(!c.empId) return; const lost = dow===5 ? (+c.rt||0) : (+c.rt||0)+(+c.ot||0);
+      if(lost>0) wkend.push({date:r.date, po:r.job.po, name:(emp(c.empId)||{}).name||"?", h:lost, what: dow===5?"Reg":"Reg/OT"}); }); });
+  const noJob = [], noMan = [];
+  if(!$("xPm").value && !$("xPo").value) Object.keys(db.days).filter(d=>d>=s.from && d<=s.to).sort().forEach(d=>dayRec(d).forms.forEach(f=>{
+    const h=(f.crew||[]).reduce((a,c)=>a+(+c.rt||0)+(+c.ot||0)+(+c.dt||0),0);
+    if(h>0 && !(f.jobId && job(f.jobId))) noJob.push({date:d, h});
+  }));
+  recs.forEach(r=>r.form.crew.forEach(c=>{ const h=(+c.rt||0)+(+c.ot||0)+(+c.dt||0); if(h>0 && !c.empId) noMan.push({date:r.date, po:r.job.po, h}); }));
+  const lostH = wkend.reduce((a,x)=>a+x.h,0);
+  return {daily, onWeekly: daily-lostH, wkend, noJob, noMan};
+}
+function gapFlags(g){
+  let h = "";
+  if(g.wkend.length) h += '<div class="flag warn"><strong>'+hrs(g.wkend.reduce((a,x)=>a+x.h,0))+' hours will not print on the weekly form</strong>: the form has no Saturday Reg column and no Sunday Reg or OT column (the agreement pays Saturday as OT and Sunday as DT). Move them to OT or DT on the Daily: '+
+    g.wkend.map(x=>esc(x.name)+" "+hrs(x.h)+" "+x.what+" on "+D.short(x.date)+" ("+esc(x.po)+")").join(", ")+". They are still in the daily file and the totals.</div>";
+  if(g.noJob.length) h += '<div class="flag"><strong>'+hrs(g.noJob.reduce((a,x)=>a+x.h,0))+' hours are on a daily form with no job picked</strong>, so they reach no export: '+g.noJob.map(x=>D.short(x.date)+" "+hrs(x.h)+" h").join(", ")+". Pick the job on that form.</div>";
+  if(g.noMan.length) h += '<div class="flag"><strong>'+hrs(g.noMan.reduce((a,x)=>a+x.h,0))+' hours are on a line with no man picked</strong>: '+g.noMan.map(x=>D.short(x.date)+" "+esc(x.po)+" "+hrs(x.h)+" h").join(", ")+".</div>";
+  return h;
+}
 function preview(){
   const {s,recs,label} = scoped();
   const go=$("xGo"), god=$("xGoDaily");
@@ -3350,11 +3554,13 @@ function preview(){
   const blocks = sheets.reduce((a,x)=>a+x.blocks.length,0);
   const days   = [...new Set(recs.map(r=>r.date+"|"+r.shift))].length;
   go.disabled = !blocks; god.disabled = !recs.length;
-  $("xPreview").innerHTML = recs.length
+  const g = exportGaps(s, recs);
+  $("xPreview").innerHTML = (recs.length
     ? '<div class="flag good"><strong>'+esc(label)+'</strong><br>Weekly: '+sheets.length+" PM tab"+(sheets.length===1?"":"s")+
       ", "+blocks+" week block"+(blocks===1?"":"s")+".  Daily: "+days+" day tab"+(days===1?"":"s")+
-      ", "+recs.length+" job form"+(recs.length===1?"":"s")+".</div>"
-  : '<div class="flag">Nothing entered for '+esc(label)+".</div>";
+      ", "+recs.length+" job form"+(recs.length===1?"":"s")+".<br>"+hrs(g.daily)+" hours on the dailies"+(SB.on?"":" on this device")+".</div>"
+  : '<div class="flag">Nothing entered for '+esc(label)+".</div>")+gapFlags(g)+
+    (sbCfg().url && !SB.on ? '<div class="flag"><strong>This device is not syncing</strong>, so these are only the hours entered on this device. Settings, Sync, Connect, then come back here.</div>' : "");
 }
 ["xScope","xDay","xWeek","xMonth","xQtr","xFrom","xTo","xPm","xPo","xShift"].forEach(id=>{
   $(id).onchange = ()=> (id==="xScope" ? showScope() : preview());
@@ -3387,7 +3593,12 @@ $("xGo").onclick = async ()=>{
       mimeType:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
     dl(blob, safe("Adman Weekly Time Sheets - "+label)+".xlsx");
     const blocks = sheets.reduce((a,x)=>a+x.blocks.length,0);
-    $("xOut").innerHTML = '<div class="flag good">Built '+sheets.length+" PM tab"+(sheets.length===1?"":"s")+
+    const gp = exportGaps(s, recs), slot = (di,t) => di<5 || (di===5 && t>0) || (di===6 && t===2);
+    const inFile = sheets.flatMap(x=>x.blocks).flatMap(b=>b.lines).reduce((a,l)=>a+l.hours.reduce((x,h,di)=>x+h.reduce((y,v,t)=>y+(slot(di,t)?v:0),0),0),0);
+    const check = Math.abs(inFile-gp.onWeekly)<0.01
+      ? '<div class="flag good">Checked: '+hrs(inFile)+' hours on the weekly sheets'+(gp.wkend.length?", the same as the dailies less the weekend hours the form has no column for.":", the same as the dailies.")+'</div>'
+      : '<div class="flag"><strong>Check this file:</strong> '+hrs(inFile)+' hours on the sheets, but '+hrs(gp.onWeekly)+' on the dailies. Tell Josh.</div>';
+    $("xOut").innerHTML = check + gapFlags(gp) + '<div class="flag good">Built '+sheets.length+" PM tab"+(sheets.length===1?"":"s")+
       " with "+blocks+" week block"+(blocks===1?"":"s")+", plus Totals.</div>";
   }catch(err){ $("xOut").innerHTML='<div class="flag">Could not build the file: '+esc(err.message)+"</div>"; }
 };
@@ -3428,7 +3639,11 @@ $("xGoDaily").onclick = async ()=>{
       mimeType:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
     dl(blob, safe("Adman Daily Time & Material - "+label)+".xlsx");
     const n = days.reduce((a,d)=>a+d.forms.length,0);
-    $("xOut").innerHTML = '<div class="flag good">Built '+days.length+" day tab"+(days.length===1?"":"s")+
+    const inFile = days.flatMap(d=>d.forms).flatMap(f=>f.crew).reduce((a,c)=>a+c.rt+c.ot+c.dt,0), g = exportGaps(s, recs);
+    $("xOut").innerHTML = (Math.abs(inFile-g.daily)<0.01 ? '<div class="flag good">Checked: '+hrs(inFile)+' hours in the file, the same as the dailies.</div>'
+                                                       : '<div class="flag"><strong>Check this file:</strong> '+hrs(inFile)+' hours in it, '+hrs(g.daily)+' on the dailies. Tell Josh.</div>')+
+      (g.noJob.length||g.noMan.length ? gapFlags({wkend:[], noJob:g.noJob, noMan:g.noMan}) : "")+
+      '<div class="flag good">Built '+days.length+" day tab"+(days.length===1?"":"s")+
       " holding "+n+" job form"+(n===1?"":"s")+".</div>";
   }catch(err){ $("xOut").innerHTML='<div class="flag">Could not build the file: '+esc(err.message)+"</div>"; }
 };
@@ -3956,7 +4171,7 @@ function rerender(){
   if(cur==="daily" && dailyDirty()){ saveBar(); return; }                 // their typing stays put; Save folds the new punches in
   try{
     if(cur==="daily") renderDaily(); else if(cur==="weekly") renderWeekly(); else if(cur==="clock") renderClock(); else if(cur==="safety") renderSafety();
-    else if(cur==="timeoff") renderTimeoff(); else if(cur==="crew") renderCrew(); else if(cur==="jobs") renderJobs();
+    else if(cur==="timeoff") renderTimeoff(); else if(cur==="crew") renderCrew(); else if(cur==="jobs") renderJobs(); else if(cur==="reports") renderAbsent();
     refreshBadge(); stamp();
   }catch(e){}
 }
@@ -4532,7 +4747,7 @@ function renderClock(){
   const rf=$("tcRefig"); if(rf) rf.onclick = async ()=>{
     const ps = db.punches.filter(p=>p.date===tcDate && (canSeeJob(p.jobId) || canSeeEmp(p.empId)) && inProj(p)).filter(stalePunch);
     if(!ps.length) return renderClock();
-    if(!await ask("Re-figure "+ps.length+" punch"+(ps.length===1?"":"es")+" on "+D.us(tcDate)+" by today's rules? Hand-moved OT and DT on the dailies stay as they are.")) return;
+    if(!await ask("Re-figure "+ps.length+" punch"+(ps.length===1?"":"es")+" on "+D.us(tcDate)+" by today's rules? Lines typed or changed by hand on the dailies stay exactly as they are.")) return;
     snapshot(true, "before re-figuring "+D.us(tcDate));
     refigure(ps); save(); renderClock(); renderDaily(); tell("Done. "+ps.length+" punch"+(ps.length===1?"":"es")+" re-figured.");
   };
@@ -4638,7 +4853,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v48";
+const APP_VERSION = "v50";
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
