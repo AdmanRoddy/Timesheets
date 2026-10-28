@@ -1583,7 +1583,12 @@ const jobStart = j => (j && j.start) || db.settings.startTime || "07:00";
    (3:00 on a 7-3:30 job) he gets the full day; past quitting time both ends round to the NEAREST half hour.
    Night shift: nearest half hour both ends. The punch keeps his real clock times - only the paid span changes. */
 const jobRound = j => !!(j && j.rnd);
-const jobStep = j => (j && +j.rndStep===30) ? 30 : 15;                    // the rule rounds clock times to 15 minutes (30 by choice)
+/* Adman's half hour: 1 to 15 minutes past goes back to the bottom (7:10 -> 7:00, 7:15 -> 7:00), 16 to 29 goes up to the
+   half (7:16 -> 7:30); the same from :31 to :59 (3:40 -> 3:30, 3:46 -> 4:00). Seconds are ignored. */
+function halfRound(t){
+  const m = Math.floor(ms(t)/60000), r = ((m % 30) + 30) % 30;
+  return new Date(((r <= 15 ? m - r : m - r + 30)) * 60000).toISOString();
+}
 /* paid from his real clock-in on a job with the start-time rule: supers, GFs and foremen by default; a PM or admin can
    switch it on or off for anyone (Employees tab) */
 const earlyOk = e => !!e && (e.early===true || (e.early!==false && (e.role==="foreman" || e.role==="super")));
@@ -1603,9 +1608,7 @@ function paidSpan(p){
   if(!p.tin) return raw;
   let tin = p.tin, tout = p.tout || null;
   if(jobRound(j)){
-    const step = jobStep(j), STEP = step*60000;
-    const near = t => new Date(Math.round(ms(t)/STEP)*STEP).toISOString();
-    const down = t => new Date(Math.floor(ms(t)/STEP)*STEP).toISOString();
+    const near = halfRound;
     tin = near(p.tin); tout = p.tout ? near(p.tout) : null;
     if(okShift(p.shift)==="day"){
       const date = p.date || T.dateOf(p.tin);
@@ -1613,7 +1616,7 @@ function paidSpan(p){
       if(start && ms(p.tin) < ms(start) && !earlyOk(emp(p.empId))) tin = start;   // in early: pays from the start of the shift (not supers, GFs, foremen)
       if(quit && p.tout){
         const graceFrom = ms(quit) - jobGrace(j)*60000, out = ms(p.tout);
-        tout = out < graceFrom ? (step===30 ? down(p.tout) : near(p.tout)) : out < ms(quit) ? quit : near(p.tout);
+        tout = out < graceFrom ? near(p.tout) : out < ms(quit) ? quit : near(p.tout);   // 3:00 to 3:29 pays through 3:30
       }
     }
     if(tout && ms(tout) <= ms(tin)){ tin = near(p.tin); tout = near(p.tout); if(ms(tout) <= ms(tin)){ tin = p.tin; tout = p.tout; } }   // a punch of a few minutes: real times
@@ -1639,7 +1642,7 @@ function paidNote(p){ const s=paidSpan(p); return s.rounded ? (s.tout ? " Paid "
      Night shift (3.11): the first 8 hours at the shift rate, the rest 1.5x.
    Returns paid hours split into rt / ot / dt. */
 function splitPunch(p, j){
-  const H = Math.round((+p.hours||0)*100)/100;
+  const H = Math.round((p.tout ? punchHours(p) : (+p.hours||0))*100)/100;   // from the clock times as they stand, never an older rule's figure
   const z = {rt:0, ot:0, dt:0};
   if(!(H>0) || !p.tin || !p.tout) return Object.assign(z, {rt:H});
   const date = p.date || T.dateOf(p.tin), dow = D.dow(date);
@@ -1666,7 +1669,7 @@ function splitPunch(p, j){
   return {rt, ot, dt};
 }
 function lineSplit(p){
-  const h = Math.round((+p.hours||0)*100)/100;
+  const h = Math.round((p.tout ? punchHours(p) : (+p.hours||0))*100)/100;
   return db.settings.autoSplit===false ? {rt:h, ot:0, dt:0} : splitPunch(p, job(p.jobId));
 }
 /* Adman's way: overhead on the labor total (or labor plus material, by setting),
@@ -2630,10 +2633,10 @@ function rndNote(j){
   const q = jobQuitIso(j, "2026-01-05"), st = T.atHM("2026-01-05", jobStart(j));
   if(!j.rnd) return "Off: punches pay their real clock times (less the meal), rounded as Settings says.";
   if(!q || !st) return "Set a start time first.";
-  const g = jobGrace(j), gf = new Date(new Date(q).getTime()-g*60000).toISOString(), h = jobStep(j)===30, unit = h ? "half hour" : "15 minutes";
-  return "Clock-in and clock-out round to the nearest "+unit+". Day shift pays from "+T.clock(st)+" however early he clocks in (supers, GFs and foremen from their real clock-in). "+
-    (g ? "Out before "+T.clock(gf)+(h?" rounds down to the half hour":" rounds to the nearest 15")+"; "+T.clock(gf)+" or later pays through "+T.clock(q)+"; " : "Out before "+T.clock(q)+(h?" rounds down to the half hour":" rounds to the nearest 15")+"; ")+
-    "past "+T.clock(q)+" both ends go to the nearest "+unit+". Real clock times stay on the Digital Timesheet.";
+  const g = jobGrace(j), gf = new Date(new Date(q).getTime()-g*60000).toISOString();
+  return "Clock-in and clock-out go to the half hour: 1 to 15 minutes past goes back (7:10 is 7:00), 16 to 29 goes up (7:16 is 7:30). "+
+    "Day shift pays from "+T.clock(st)+" however early he clocks in (supers, GFs and foremen from their real clock-in). "+
+    (g ? "Out at "+T.clock(gf)+" or later pays through "+T.clock(q)+". " : "")+"Real clock times stay on the Digital Timesheet.";
 }
 async function offerRefigure(j){
   const from = D.add(D.weekEnd(D.iso(new Date())),-6);
@@ -2688,8 +2691,8 @@ function renderJobs(){
           '<label class="f jnum" style="flex-basis:130px">Start time<input type="time" data-j="'+j.id+'" data-p="start" value="'+esc(j.start||"")+'" placeholder="'+esc(db.settings.startTime||"07:00")+'"></label>'+
           '<label class="f jsel">Night shift<select data-j="'+j.id+'" data-p="nightShift"><option value="">Company default</option><option value="swing"'+(j.nightShift==="swing"?" selected":"")+'>Swing (+'+(+db.settings.swingPct||0)+'%)</option><option value="grave"'+(j.nightShift==="grave"?" selected":"")+'>Graveyard (+'+(+db.settings.gravePct||0)+'%)</option><option value="none"'+(j.nightShift==="none"?" selected":"")+'>No premium</option></select></label>'+
           '<span class="mini" style="padding-bottom:10px">Quits at '+(function(){ const st=T.atHM("2026-01-05", jobStart(j)); if(!st) return "?"; const q=new Date(new Date(st).getTime()+((jobSched(j)==="4x10"?10:8)+(+db.settings.mealMin||0)/60)*3600000); return T.clock(q.toISOString()); })()+' · OT until '+(function(){ const st=T.atHM("2026-01-05", jobStart(j)); if(!st) return "?"; const ten=jobSched(j)==="4x10"; const q=new Date(new Date(st).getTime()+((ten?10:8)+(ten?2:4)+(+db.settings.mealMin||0)/60)*3600000); return T.clock(q.toISOString()); })()+', then double time</span></div>'+
-        '<div class="jrow jrnd"><label class="jact"><input type="checkbox" data-j="'+j.id+'" data-p="rnd"'+(j.rnd?" checked":"")+'> Start-time rule and rounding</label>'+
-          '<label class="f jsel">Round punches to<select data-j="'+j.id+'" data-p="rndStep"'+(j.rnd?"":" disabled")+'><option value="15"'+(jobStep(j)===15?" selected":"")+'>Nearest 15 min</option><option value="30"'+(jobStep(j)===30?" selected":"")+'>Half hour</option></select></label>'+
+        '<div class="jrow jrnd"><label class="jact"><input type="checkbox" data-j="'+j.id+'" data-p="rnd"'+(j.rnd?" checked":"")+'> Start at 7:00, round to the half hour</label>'+
+
           '<label class="f jsel">Early-out grace<select data-j="'+j.id+'" data-p="rndGrace"'+(j.rnd?"":" disabled")+'>'+[0,15,30,45,60].map(g=>'<option value="'+g+'"'+(jobGrace(j)===g?" selected":"")+'>'+(g?g+" min":"None")+'</option>').join("")+'</select></label>'+
           '<span class="mini" style="padding-bottom:10px">'+esc(rndNote(j))+'</span></div>'+
         '<div class="jrow jsite"><label class="f jloc">Job site location (lat, long)<input type="text" data-jsite="'+j.id+'" value="'+(j.site?j.site.lat+", "+j.site.lon:"")+'" placeholder="Paste from Google Maps, or use this device"></label>'+
@@ -2708,7 +2711,6 @@ function renderJobs(){
     el.onchange = ev => {
       if(p==="rnd"){ j.rnd = ev.target.checked; if(!j.rnd) delete j.rnd; save(); renderJobs(); offerRefigure(j); return; }
       if(p==="rndGrace"){ j.rndGrace = +ev.target.value||0; save(); renderJobs(); offerRefigure(j); return; }
-      if(p==="rndStep"){ j.rndStep = +ev.target.value===30 ? 30 : 15; save(); renderJobs(); offerRefigure(j); return; }
       if(p==="sched"||p==="start"||p==="nightShift"){ j[p] = ev.target.value; if(p==="start" && j.start && !/^\d{2}:\d{2}$/.test(j.start)) j.start=""; save(); renderJobs(); if(j.rnd) offerRefigure(j); return; }
       if(p==="oh"||p==="profit") j[p] = ev.target.value==="" ? null : (+ev.target.value||0);
       else if(p==="markupOff"){ j.markupOff = ev.target.checked; save(); renderJobs(); return; }
@@ -3938,6 +3940,7 @@ function mergeDay(local, cloud, date){
 }
 function healDays(){
   const cutoff = D.iso(new Date(Date.now()-21*86400000));
+  db.punches.forEach(p=>{ if(p && p.tout && p.date >= cutoff){ const h = punchHours(p); if(Math.abs((+p.hours||0) - h) > 0.005) p.hours = h; } });
   const ids = new Set(db.punches.map(p=>p.id)), have = new Set(), openIds = new Set(), skip = noLineIds(), gone = SB.gone||new Set();
   Object.keys(db.days||{}).forEach(d=>{
     if(d < cutoff || !db.days[d]) return;
@@ -4928,7 +4931,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v51";
+const APP_VERSION = "v52";
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
