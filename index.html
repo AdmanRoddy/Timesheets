@@ -1656,7 +1656,7 @@ function splitPunch(p, j){
   const startIso = T.atHM(date, jobStart(j)); if(!startIso) return Object.assign(z, {rt:H});
   const start = new Date(startIso);
   const unpaid = Math.max(0, (tout-tin)/3600000 - H);                    // the meal period sits inside the regular stretch
-  const quit = new Date(start.getTime() + (R+unpaid+earlierMeal(p))*3600000);
+  const quit = new Date(jobQuitIso(j, date) || (start.getTime() + (R + (+db.settings.mealMin||0)/60)*3600000));   // the scheduled quitting time (3:30), whatever meal came out of his day
   const otEnd = new Date(quit.getTime() + W*3600000);
   const clip = (a,b) => Math.max(0, (Math.min(tout,b)-Math.max(tin,a))/3600000);
   const early = clip(new Date(0), start);
@@ -4931,7 +4931,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v52";
+const APP_VERSION = "v53";
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
