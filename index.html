@@ -668,6 +668,12 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
       <label class="f">Take it out on shifts over<select id="mealAfter">
         <option value="4">4 hours</option><option value="5">5 hours</option><option value="6">6 hours</option><option value="8">8 hours</option>
       </select></label>
+      <label class="f">Paid meal period<select id="pmMin">
+        <option value="0">None</option><option value="15">15 min</option><option value="30">30 min</option><option value="45">45 min</option><option value="60">60 min</option>
+      </select></label>
+      <label class="f">After this many hours worked<select id="pmAfter">
+        <option value="10">10 hours</option><option value="11">11 hours</option><option value="12">12 hours</option><option value="13">13 hours</option><option value="14">14 hours</option>
+      </select></label>
       <button class="b ghost sm" id="mealApply">Apply to this week's punches</button>
     </div>
     <div class="row" style="margin-top:10px">
@@ -1598,9 +1604,23 @@ function jobQuitIso(j, date){
   return new Date(new Date(st).getTime() + ((jobSched(j)==="4x10"?10:8) + (+db.settings.mealMin||0)/60)*3600000).toISOString();
 }
 const ms = t => new Date(t).getTime();
+/* a man's punches on one date (every job, both shifts). During a sync tidy they are filed by man and day once, so each
+   rule looks up his day instead of scanning every punch ever entered (that scan made the tidy slower every week) */
+var DAYIX = null;
+function sameDayAll(p){
+  if(!p) return [];
+  if(DAYIX) return DAYIX.get(p.empId+"|"+p.date) || [];
+  return db.punches.filter(x=>x && x.empId===p.empId && x.date===p.date);
+}
+function withDayIndex(fn){
+  if(DAYIX) return fn();
+  DAYIX = new Map();
+  for(const x of db.punches){ if(!x) continue; const k = x.empId+"|"+x.date; let a = DAYIX.get(k); if(!a) DAYIX.set(k, a = []); a.push(x); }
+  try{ return fn(); } finally{ DAYIX = null; }
+}
 /* the leg he came off when he moved jobs: a finished punch today whose clock-out is within a few minutes of this clock-in */
 function legBefore(p){
-  return db.punches.filter(x=>x.id!==p.id && x.empId===p.empId && x.date===p.date && x.tout && okShift(x.shift)===okShift(p.shift) && ms(x.tin) < ms(p.tin) && Math.abs(ms(p.tin)-ms(x.tout)) <= 15*60000)
+  return sameDayAll(p).filter(x=>x.id!==p.id && x.empId===p.empId && x.date===p.date && x.tout && okShift(x.shift)===okShift(p.shift) && ms(x.tin) < ms(p.tin) && Math.abs(ms(p.tin)-ms(x.tout)) <= 15*60000)
     .sort((a,b)=>ms(b.tout)-ms(a.tout))[0] || null;                      // strictly earlier, so the chain always runs back in time and ends
 }
 function paidSpan(p){
@@ -1614,7 +1634,7 @@ function paidSpan(p){
       const date = p.date || T.dateOf(p.tin);
       const start = T.atHM(date, jobStart(j)), quit = jobQuitIso(j, date);
       if(start && ms(p.tin) < ms(start) && !earlyOk(emp(p.empId))) tin = start;   // in early: pays from the start of the shift (not supers, GFs, foremen)
-      const mid = p.split && db.punches.some(x=>x && x.split===p.split && x.id!==p.id && String(x.tin) > String(p.tin));   // a split day's hand-off between POs is not a clock-out
+      const mid = p.split && sameDayAll(p).some(x=>x && x.split===p.split && x.id!==p.id && String(x.tin) > String(p.tin));   // a split day's hand-off between POs is not a clock-out
       if(quit && p.tout && !mid){
         const graceFrom = ms(quit) - jobGrace(j)*60000, out = ms(p.tout);
         tout = out < graceFrom ? near(p.tout) : out < ms(quit) ? quit : near(p.tout);   // 3:00 to 3:29 pays through 3:30
@@ -1631,7 +1651,7 @@ function paidSpan(p){
 }
 /* the meal already taken out of earlier legs today, so a later leg's OT window still starts after 8 (or 10) paid hours */
 function earlierMeal(p){
-  return db.punches.filter(x=>x.id!==p.id && x.empId===p.empId && x.date===p.date && x.tout && okShift(x.shift)===okShift(p.shift) && String(x.tin)<String(p.tin))
+  return sameDayAll(p).filter(x=>x.id!==p.id && x.empId===p.empId && x.date===p.date && x.tout && okShift(x.shift)===okShift(p.shift) && String(x.tin)<String(p.tin))
     .reduce((a,x)=>a+mealHrs(x, spanHrs(x)), 0);
 }
 const spanHrs = p => { const s=paidSpan(p); return s.tout ? Math.max(0,(new Date(s.tout)-new Date(s.tin))/3600000) : 0; };
@@ -1643,11 +1663,13 @@ function paidNote(p){ const s=paidSpan(p); return s.rounded ? (s.tout ? " Paid "
      Night shift: the first 8 hours at the shift rate, the next 4 at 1.5x, the rest 2x.
      No day carries more than 4 hours of 1.5x (2 on a 4/10) Mon-Fri: anything past that is 2x. A day split across jobs
      counts its earlier legs toward the 8 and the 4.
+     A day past 12 hours worked gets a 30-minute paid meal period (taken going home): paid as if he stayed 30 minutes
+     past his clock-out, so it falls in whatever OT or DT that half hour would have been.
      A day split evenly across several POs (clocked in on several at once): the day's Reg, OT and DT are figured by the
      clock as above, then every PO gets the same mix in proportion to its hours (to the half hour where the hours allow,
      the odd half hour to the earlier POs), so no one PO carries the early-morning DT or the late OT.
    Returns paid hours split into rt / ot / dt. */
-const earlierLegs = p => db.punches.filter(x=>x && x.id!==p.id && x.empId===p.empId && x.date===p.date && x.tout && okShift(x.shift)===okShift(p.shift) && String(x.tin)<String(p.tin));
+const earlierLegs = p => sameDayAll(p).filter(x=>x && x.id!==p.id && x.empId===p.empId && x.date===p.date && x.tout && okShift(x.shift)===okShift(p.shift) && String(x.tin)<String(p.tin));
 function splitPunch(p, j){
   if(p && p.split && p.tout){ const g = splitGroup(p); if(g.length>1 && g.every(x=>x.tout) && g.some(x=>x.id===p.id)) return evenShare(p, g); }
   return clockSplit(p, j);
@@ -1657,7 +1679,7 @@ const byTin = (a,b) => String(a.tin) < String(b.tin) ? -1 : String(a.tin) > Stri
    (one pass, so a day of many legs never re-figures every earlier leg again for each later one) */
 function dayRun(legs){
   const out = [];
-  legs.forEach((x,k)=>{ let used = 0; for(let i=0;i<k;i++) if(String(legs[i].tin) < String(x.tin)) used += +out[i].ot||0; out.push(clockSplit(x, job(x.jobId), used)); });
+  legs.forEach((x,k)=>{ const used = {rt:0, ot:0}; for(let i=0;i<k;i++) if(String(legs[i].tin) < String(x.tin)){ used.rt += +out[i].rt||0; used.ot += +out[i].ot||0; } out.push(clockSplit(x, job(x.jobId), used)); });
   return out;
 }
 /* share `total` units over legs in proportion to their sizes, never past a leg's cap; ties go to the earlier leg */
@@ -1673,7 +1695,7 @@ function apportion(total, sizes, caps){
 }
 /* one leg's share of a split day: the same mix of Reg/OT/DT on every PO */
 function evenShare(p, g){
-  const all = db.punches.filter(x=>x && x.empId===p.empId && x.date===p.date && x.tout && okShift(x.shift)===okShift(p.shift)).sort(byTin);
+  const all = sameDayAll(p).filter(x=>x && x.empId===p.empId && x.date===p.date && x.tout && okShift(x.shift)===okShift(p.shift)).sort(byTin);
   const run = dayRun(all), ids = new Set(g.map(x=>x.id));
   const rows = all.map((x,i)=>({x, s:run[i]})).filter(r=>ids.has(r.x.id));
   const k = rows.findIndex(r=>r.x.id===p.id); if(k<0) return clockSplit(p, job(p.jobId));
@@ -1687,7 +1709,7 @@ function evenShare(p, g){
   const ot = apportion(Math.round(tot.ot/u), size, size.map((s,i)=>s-dt[i]));
   return {rt:r2((size[k]-dt[k]-ot[k])*u), ot:r2(ot[k]*u), dt:r2(dt[k]*u)};
 }
-/* Reg/OT/DT for one punch by the clock. `used`: the 1.5x his earlier legs today already took (figured here if not given) */
+/* Reg/OT/DT for one punch by the clock. `used`: the Reg and 1.5x his earlier legs today already took (figured here if not given) */
 function clockSplit(p, j, used){
   const H = Math.round((p.tout ? punchHours(p) : (+p.hours||0))*100)/100;   // from the clock times as they stand, never an older rule's figure
   const z = {rt:0, ot:0, dt:0};
@@ -1704,7 +1726,7 @@ function clockSplit(p, j, used){
     const ot = Math.min(Math.max(0, W - Math.max(0, prior - R)), H - rt);
     return Object.assign(z, {rt:r2(rt), ot:r2(ot), dt:r2(H-rt-ot)});
   }
-  const sp = paidSpan(p), tin=new Date(sp.tin), tout=new Date(sp.tout);
+  const sp = paidSpan(p), tin=new Date(sp.tin), tout=new Date(ms(sp.tout) + paidMeal(p)*3600000);   // a paid meal: as if he stayed 30 minutes past his clock-out
   const startIso = T.atHM(date, jobStart(j)); if(!startIso) return Object.assign(z, {rt:H});
   const start = new Date(startIso);
   const unpaid = Math.max(0, (tout-tin)/3600000 - H);                    // the meal period sits inside the regular stretch
@@ -1718,8 +1740,10 @@ function clockSplit(p, j, used){
   if(db.settings.earlyAs==="ot") ot += early; else dt += early;
   const tot = rt+ot+dt; if(tot>0 && Math.abs(tot-H)>0.001){ rt*=H/tot; ot*=H/tot; dt*=H/tot; }
   rt=r2(rt); ot=r2(ot); dt=r2(H-rt-ot); if(dt<0){ ot=r2(ot+dt); dt=0; }
-  if(used == null) used = dayRun(earlierLegs(p).sort(byTin)).reduce((a,s)=>a+(+s.ot||0), 0);
-  const room = Math.max(0, W - used);                                    // 4 hours of 1.5x a day, then 2x
+  if(used == null) used = dayRun(earlierLegs(p).sort(byTin)).reduce((a,s)=>({rt:a.rt+(+s.rt||0), ot:a.ot+(+s.ot||0)}), {rt:0, ot:0});
+  const rtRoom = Math.max(0, R - (+used.rt||0));                         // 8 Reg a day across all his jobs (a no-lunch day split across POs)
+  if(rt > rtRoom + 0.001){ ot = r2(ot + rt - rtRoom); rt = r2(rtRoom); }
+  const room = Math.max(0, W - (+used.ot||0));                           // 4 hours of 1.5x a day, then 2x
   if(ot > room + 0.001){ dt = r2(dt + ot - room); ot = r2(room); }
   return {rt, ot, dt};
 }
@@ -1855,20 +1879,40 @@ function repost(p){ unpost(p); post(p); }
    day is long enough to have one. Nobody clocks out for lunch, so 7:00 to 3:30 with a 30 minute meal pays 8.00.
    The meal comes out ONCE a day: a man moved between jobs has it taken from the punch that carries his day past
    the threshold, not from each punch (and not from none of them). */
+/* a man's punches on one day and shift (every job he was on) */
+const dayPunches = p => sameDayAll(p).filter(x=>x && x.empId===p.empId && x.date===p.date && okShift(x.shift)===okShift(p.shift));
+/* no lunch: the Meal box is for his whole day, not one punch, so it never slides onto his next job */
+const dayNoMeal = p => !!p && (!!p.noMeal || dayPunches(p).some(x=>x.noMeal));
 function mealHrs(p, elapsed){
-  if(p.noMeal) return 0;
+  if(dayNoMeal(p)) return 0;
   const m = +db.settings.mealMin||0, after = +db.settings.mealAfter||0;
   if(!(m>0)) return 0;
-  const before = db.punches.filter(x=>x.id!==p.id && x.empId===p.empId && x.date===p.date && okShift(x.shift)===okShift(p.shift) && x.tout && String(x.tin)<String(p.tin))
+  const before = sameDayAll(p).filter(x=>x.id!==p.id && x.empId===p.empId && x.date===p.date && okShift(x.shift)===okShift(p.shift) && x.tout && String(x.tin)<String(p.tin))
     .sort((a,b)=>String(a.tin).localeCompare(String(b.tin)));
   let run = 0;
   for(const x of before){ run += spanHrs(x); if(!x.noMeal && run >= after) return 0; }   // an earlier punch today already carries the meal
   return (run+elapsed >= after) ? m/60 : 0;
 }
-function punchHours(p){
+/* hours worked on one punch: time on the clock (the paid span) less the unpaid meal */
+function workHours(p){
   if(!p.tout) return 0;
   const elapsed = spanHrs(p);
   return roundHrs(Math.max(0, elapsed - mealHrs(p, elapsed)));
+}
+/* Paid meal period: a day that runs past 12 hours worked gets 30 minutes paid on top (he takes it going home), once,
+   on his last punch of the day. Settings: paidMealAfter (hours worked), paidMealMin (minutes, 0 = off). */
+const paidMealMin = () => db.settings.paidMealMin == null ? 30 : (+db.settings.paidMealMin||0);
+const paidMealAfter = () => db.settings.paidMealAfter == null ? 12 : (+db.settings.paidMealAfter||12);
+function paidMeal(p){
+  const m = paidMealMin(); if(!p || !p.tout || !(m>0)) return 0;
+  const day = dayPunches(p); if(!day.some(x=>x.id===p.id)) day.push(p);
+  if(day.some(x=>x.id!==p.id && (String(x.tin) > String(p.tin) || (String(x.tin)===String(p.tin) && String(x.id) > String(p.id))))) return 0;   // not his last punch today
+  const worked = day.reduce((a,x)=>a+(x.tout ? workHours(x.id===p.id ? p : x) : 0), 0);
+  return worked > paidMealAfter() + 1e-9 ? m/60 : 0;
+}
+function punchHours(p){
+  if(!p.tout) return 0;
+  return Math.round((workHours(p) + paidMeal(p))*100)/100;
 }
 /* after a rule changes (meal, rounding, a job's half-hour rule): hours again from the clock times, and the daily
    line re-split - unless the office typed or changed that line, which is left exactly as they made it */
@@ -1950,7 +1994,7 @@ function clockIn(empId, jobId, jobs){
   db.punches.push(p); post(p); save(); return p;                        // his name goes on today's sheet right away
 }
 const canSplit = e => !!e && e.role!=="employee";                        // foremen, supers, PMs, office: the men who cover several POs
-const splitGroup = p => p && p.split ? db.punches.filter(x=>x.split===p.split && !x.__deleted).sort((a,b)=>String(a.tin).localeCompare(String(b.tin))) : [p];
+const splitGroup = p => p && p.split ? (DAYIX ? sameDayAll(p) : db.punches).filter(x=>x.split===p.split && !x.__deleted).sort((a,b)=>String(a.tin).localeCompare(String(b.tin))) : [p];
 /* Split a finished punch evenly between jobs, to the half hour: each job becomes a leg with consecutive times, so the
    half-hour rule, the once-a-day meal, the OT windows and every sheet treat it like a man who moved jobs. The first
    leg keeps his real clock-in, the last his real clock-out; the odd half hour goes to the first jobs. */
@@ -2009,10 +2053,11 @@ function markLong(legs, long){ legs.forEach(l=>{ delete l.long; }); if(long) leg
 /* what the keypad says at clock-out: the whole day, split or not */
 function outMsg(p){
   const grp = splitGroup(p);
-  if(grp.length<2) return "Clocked out at "+T.clock(p.tout)+".  "+hrs(p.hours)+" hours on "+(job(p.jobId)?crewJobTitle(job(p.jobId)):"the job")+"."+paidNote(p);
+  const pmN = paidMeal(grp[grp.length-1])>0 ? " Includes a "+paidMealMin()+"-minute paid meal (over "+paidMealAfter()+" hours)." : "";
+  if(grp.length<2) return "Clocked out at "+T.clock(p.tout)+".  "+hrs(p.hours)+" hours on "+(job(p.jobId)?crewJobTitle(job(p.jobId)):"the job")+"."+paidNote(p)+pmN;
   const tot = grp.reduce((a,x)=>a+(+x.hours||0),0), s0 = paidSpan(grp[0]), s1 = paidSpan(grp[grp.length-1]);
   return "Clocked out at "+T.clock(p.tout)+".  "+hrs(tot)+" hours split between "+grp.length+" jobs: "+grp.map(x=>hrs(x.hours)+" on "+crewJobTitle(job(x.jobId))).join(", ")+"."+
-    ((s0.rounded||s1.rounded) ? " Paid "+T.clock(s0.tin)+" to "+T.clock(s1.tout)+"." : "");
+    ((s0.rounded||s1.rounded) ? " Paid "+T.clock(s0.tin)+" to "+T.clock(s1.tout)+"." : "")+pmN;
 }
 
 /* ---------------------------------------------------------------- daily */
@@ -3359,6 +3404,7 @@ function renderSettings(){
     $("roundTo").value = String(db.settings.roundTo);
     $("mealMin").value = String(+db.settings.mealMin||0);
     $("mealAfter").value = String(+db.settings.mealAfter||6);
+    $("pmMin").value = String(paidMealMin()); $("pmAfter").value = String(paidMealAfter());
     $("geoMode").value = db.settings.geoMode || "off";
     $("geoFt").value = String(+db.settings.geoFt||1000);
     $("kioskMsg").innerHTML = String(db.settings.adminPin||"0000")==="0000"
@@ -3482,6 +3528,8 @@ $("otApply").onclick = async ()=>{
   save(); renderDaily(); tell("Done. "+n+" punch"+(n===1?"":"es")+" re-figured.");
 };
 $("mealAfter").onchange = e=>{ db.settings.mealAfter = +e.target.value; save(); };
+$("pmMin").onchange = e=>{ db.settings.paidMealMin = +e.target.value; healDays(); save(); renderDaily(); };
+$("pmAfter").onchange = e=>{ db.settings.paidMealAfter = +e.target.value; healDays(); save(); renderDaily(); };
 /* the setting applies to punches from now on; this re-figures the current week's closed punches too */
 $("mealApply").onclick = async ()=>{
   const from = D.add(D.weekEnd(D.iso(new Date())),-6);
@@ -3993,7 +4041,8 @@ function mergeDay(local, cloud, date){
   });
   return foldDay(out, skip, date);
 }
-function healDays(){
+function healDays(){ return withDayIndex(healDaysNow); }
+function healDaysNow(){
   const cutoff = D.iso(new Date(Date.now()-21*86400000));
   db.punches.forEach(p=>{ if(p && p.tout && p.date >= cutoff){ const h = punchHours(p); if(Math.abs((+p.hours||0) - h) > 0.005) p.hours = h; } });
   const ids = new Set(db.punches.map(p=>p.id)), have = new Set(), openIds = new Set(), skip = noLineIds(), gone = SB.gone||new Set();
@@ -4827,9 +4876,10 @@ function renderClock(){
           '<td class="sh" data-l="Shift"><select data-pp="'+p.id+'" data-f="shift"><option value="day"'+(p.shift!=="night"?" selected":"")+'>Day</option><option value="night"'+(p.shift==="night"?" selected":"")+'>Night</option></select></td>'+
           '<td class="tm" data-l="In · Out"><div class="tms"><input type="time" data-pp="'+p.id+'" data-f="tin" value="'+T.hm(p.tin)+'">'+
           (p.tout?'<input type="time" data-pp="'+p.id+'" data-f="tout" value="'+T.hm(p.tout)+'">':'<button class="b ghost sm" data-pclose="'+p.id+'">Clock out now</button>')+"</div></td>"+
-          '<td class="meal" data-l="Meal"><input type="checkbox" data-pp="'+p.id+'" data-f="meal" title="Unpaid meal taken"'+(p.noMeal?"":" checked")+"></td>"+
+          '<td class="meal" data-l="Meal"><input type="checkbox" data-pp="'+p.id+'" data-f="meal" title="Unpaid meal taken (for his whole day)"'+(dayNoMeal(p)?"":" checked")+"></td>"+
           '<td class="loc">'+geoCell(p)+(p.ack && Object.keys(p.ack).length ? '<span class="chip appr" title="Opened the safety sign-in">Safety &#10003;</span>' : "")+
             (p.jobs && p.jobs.length>1 ? '<span class="chip" title="'+esc(p.jobs.map(id=>(job(id)||{}).po||"?").join(", "))+'">On '+p.jobs.length+' jobs</span>' : "")+
+            (p.tout && paidMeal(p)>0 ? '<span class="chip appr" title="Worked past '+paidMealAfter()+' hours: a '+paidMealMin()+'-minute paid meal period is added (taken going home)">+'+paidMealMin()+' min paid meal</span>' : "")+
             (p.split ? (function(){ const g=splitGroup(p); return '<span class="chip" title="Clocked in on '+g.length+' jobs at once; the day was split evenly to the half hour">Split '+(g.indexOf(p)+1)+'/'+g.length+'</span>'; })() : "")+
             (p.tout && !p.split && canSeeJob(p.jobId) ? ' <button class="b ghost sm" data-psplit="'+p.id+'" title="Split this punch evenly between several jobs">Split…</button>' : "")+"</td>"+
           '<td class="n num hrs" data-l="Hours">'+(p.tout?hrs(p.hours):"")+(function(){ const s=paidSpan(p); return s.rounded ? '<div class="mini" title="The job rounds to the half hour; these are the times it pays">'+(s.tout?"pays "+T.clock(s.tin)+"–"+T.clock(s.tout):"from "+T.clock(s.tin))+'</div>' : ""; })()+"</td>"+($$?'<td class="n num cost" data-l="Cost">'+(p.tout?money(p.hours*r):"")+"</td>":"")+
@@ -4900,9 +4950,11 @@ function renderClock(){
         if(p.tout && new Date(p.tout) < new Date(p.tin)){
           const d=new Date(p.tout); d.setDate(d.getDate()+1); p.tout=d.toISOString();
         }
-      } else if(f==="meal") p.noMeal = !ev.target.checked;
+      } else if(f==="meal"){ const off = !ev.target.checked; dayPunches(p).concat([p]).forEach(x=>{ if(off) x.noMeal = true; else delete x.noMeal; }); }
       else p[f] = ev.target.value;
-      p.hours = punchHours(p); delete p.noLine; repost(p); save();
+      p.hours = punchHours(p); delete p.noLine; repost(p);
+      dayPunches(p).forEach(x=>{ if(x!==p && x.tout){ x.hours = punchHours(x); repost(x); } });   // the meal, the paid meal and the OT cap belong to his whole day
+      save();
       if((f==="tin"||f==="tout") && document.activeElement===el){            // he is still in the field: keep the row where it is
         TC.hold = true; const tr=el.closest("tr"), cells=tr?tr.querySelectorAll("td.n.num"):[];
         if(cells[0]) cells[0].textContent = p.tout ? hrs(p.hours) : "";
@@ -4987,7 +5039,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
 const APP_VERSION = "v53";
-const APP_BUILD = 54;                     /* what the update check compares (sw.js CACHE "adman-field-v54"); the label above can stay put */
+const APP_BUILD = 55;                     /* what the update check compares (sw.js CACHE "adman-field-v55"); the label above can stay put */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
