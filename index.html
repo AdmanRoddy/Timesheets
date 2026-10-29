@@ -1614,7 +1614,8 @@ function paidSpan(p){
       const date = p.date || T.dateOf(p.tin);
       const start = T.atHM(date, jobStart(j)), quit = jobQuitIso(j, date);
       if(start && ms(p.tin) < ms(start) && !earlyOk(emp(p.empId))) tin = start;   // in early: pays from the start of the shift (not supers, GFs, foremen)
-      if(quit && p.tout){
+      const mid = p.split && db.punches.some(x=>x && x.split===p.split && x.id!==p.id && String(x.tin) > String(p.tin));   // a split day's hand-off between POs is not a clock-out
+      if(quit && p.tout && !mid){
         const graceFrom = ms(quit) - jobGrace(j)*60000, out = ms(p.tout);
         tout = out < graceFrom ? near(p.tout) : out < ms(quit) ? quit : near(p.tout);   // 3:00 to 3:29 pays through 3:30
       }
@@ -1639,9 +1640,55 @@ function paidNote(p){ const s=paidSpan(p); return s.rounded ? (s.tout ? " Paid "
      5/8:  8 hours from the job's start time; the first 4 hours after the scheduled quitting time Mon-Fri are 1.5x
      4/10: 10 hours from the start time Mon-Thu; the first 2 hours after quitting time are 1.5x; the first 12 hours Friday are 1.5x
      Saturday: first 12 hours 1.5x.  Sunday and holidays: everything 2x.  Anything outside those windows: 2x.
-     Night shift (3.11): the first 8 hours at the shift rate, the rest 1.5x.
+     Night shift: the first 8 hours at the shift rate, the next 4 at 1.5x, the rest 2x.
+     No day carries more than 4 hours of 1.5x (2 on a 4/10) Mon-Fri: anything past that is 2x. A day split across jobs
+     counts its earlier legs toward the 8 and the 4.
+     A day split evenly across several POs (clocked in on several at once): the day's Reg, OT and DT are figured by the
+     clock as above, then every PO gets the same mix in proportion to its hours (to the half hour where the hours allow,
+     the odd half hour to the earlier POs), so no one PO carries the early-morning DT or the late OT.
    Returns paid hours split into rt / ot / dt. */
+const earlierLegs = p => db.punches.filter(x=>x && x.id!==p.id && x.empId===p.empId && x.date===p.date && x.tout && okShift(x.shift)===okShift(p.shift) && String(x.tin)<String(p.tin));
 function splitPunch(p, j){
+  if(p && p.split && p.tout){ const g = splitGroup(p); if(g.length>1 && g.every(x=>x.tout) && g.some(x=>x.id===p.id)) return evenShare(p, g); }
+  return clockSplit(p, j);
+}
+const byTin = (a,b) => String(a.tin) < String(b.tin) ? -1 : String(a.tin) > String(b.tin) ? 1 : 0;
+/* a man's finished punches on one day and shift, front to back: each one's Reg/OT/DT knowing the 1.5x the earlier ones used
+   (one pass, so a day of many legs never re-figures every earlier leg again for each later one) */
+function dayRun(legs){
+  const out = [];
+  legs.forEach((x,k)=>{ let used = 0; for(let i=0;i<k;i++) if(String(legs[i].tin) < String(x.tin)) used += +out[i].ot||0; out.push(clockSplit(x, job(x.jobId), used)); });
+  return out;
+}
+/* share `total` units over legs in proportion to their sizes, never past a leg's cap; ties go to the earlier leg */
+function apportion(total, sizes, caps){
+  const S = sizes.reduce((a,b)=>a+b,0), out = sizes.map(()=>0);
+  if(!(total>0) || !(S>0)) return out;
+  const q = sizes.map(s=>total*s/S), fr = q.map(v=>v-Math.floor(v+1e-9));
+  let left = total;
+  q.forEach((v,i)=>{ out[i] = Math.max(0, Math.min(caps[i], Math.floor(v+1e-9))); left -= out[i]; });
+  const order = q.map((v,i)=>i).sort((a,b)=>(fr[b]-fr[a] > 1e-9 ? 1 : fr[a]-fr[b] > 1e-9 ? -1 : a-b));
+  while(left>0){ let gave = false; for(const i of order){ if(left>0 && out[i]<caps[i]){ out[i]++; left--; gave = true; } } if(!gave) break; }
+  return out;
+}
+/* one leg's share of a split day: the same mix of Reg/OT/DT on every PO */
+function evenShare(p, g){
+  const all = db.punches.filter(x=>x && x.empId===p.empId && x.date===p.date && x.tout && okShift(x.shift)===okShift(p.shift)).sort(byTin);
+  const run = dayRun(all), ids = new Set(g.map(x=>x.id));
+  const rows = all.map((x,i)=>({x, s:run[i]})).filter(r=>ids.has(r.x.id));
+  const k = rows.findIndex(r=>r.x.id===p.id); if(k<0) return clockSplit(p, job(p.jobId));
+  const r2 = v => Math.round(v*100)/100;
+  const hrs = rows.map(r=>r2((+r.s.rt||0)+(+r.s.ot||0)+(+r.s.dt||0)));
+  const tot = {ot:r2(rows.reduce((a,r)=>a+(+r.s.ot||0),0)), dt:r2(rows.reduce((a,r)=>a+(+r.s.dt||0),0))};
+  const vals = hrs.concat([tot.ot, tot.dt]);
+  const u = [0.5, 0.25].find(u=>vals.every(v=>Math.abs(v/u - Math.round(v/u)) < 1e-6)) || 0.01;
+  const size = hrs.map(h=>Math.round(h/u));
+  const dt = apportion(Math.round(tot.dt/u), size, size);
+  const ot = apportion(Math.round(tot.ot/u), size, size.map((s,i)=>s-dt[i]));
+  return {rt:r2((size[k]-dt[k]-ot[k])*u), ot:r2(ot[k]*u), dt:r2(dt[k]*u)};
+}
+/* Reg/OT/DT for one punch by the clock. `used`: the 1.5x his earlier legs today already took (figured here if not given) */
+function clockSplit(p, j, used){
   const H = Math.round((p.tout ? punchHours(p) : (+p.hours||0))*100)/100;   // from the clock times as they stand, never an older rule's figure
   const z = {rt:0, ot:0, dt:0};
   if(!(H>0) || !p.tin || !p.tout) return Object.assign(z, {rt:H});
@@ -1650,8 +1697,13 @@ function splitPunch(p, j){
   if(holidayOn(date) || dow===6) return Object.assign(z, {dt:H});
   const ten = jobSched(j)==="4x10";
   if(dow===5 || (ten && dow===4)){ const ot=Math.min(12,H); return Object.assign(z, {ot:r2(ot), dt:r2(H-ot)}); }
-  if(okShift(p.shift)==="night"){ const rt=Math.min(8,H); return Object.assign(z, {rt:r2(rt), ot:r2(H-rt)}); }
   const R = ten?10:8, W = ten?2:4;
+  if(okShift(p.shift)==="night"){
+    const prior = earlierLegs(p).reduce((a,x)=>a+punchHours(x), 0);     // hours already worked tonight on earlier legs
+    const rt = Math.max(0, Math.min(R - prior, H));
+    const ot = Math.min(Math.max(0, W - Math.max(0, prior - R)), H - rt);
+    return Object.assign(z, {rt:r2(rt), ot:r2(ot), dt:r2(H-rt-ot)});
+  }
   const sp = paidSpan(p), tin=new Date(sp.tin), tout=new Date(sp.tout);
   const startIso = T.atHM(date, jobStart(j)); if(!startIso) return Object.assign(z, {rt:H});
   const start = new Date(startIso);
@@ -1666,6 +1718,9 @@ function splitPunch(p, j){
   if(db.settings.earlyAs==="ot") ot += early; else dt += early;
   const tot = rt+ot+dt; if(tot>0 && Math.abs(tot-H)>0.001){ rt*=H/tot; ot*=H/tot; dt*=H/tot; }
   rt=r2(rt); ot=r2(ot); dt=r2(H-rt-ot); if(dt<0){ ot=r2(ot+dt); dt=0; }
+  if(used == null) used = dayRun(earlierLegs(p).sort(byTin)).reduce((a,s)=>a+(+s.ot||0), 0);
+  const room = Math.max(0, W - used);                                    // 4 hours of 1.5x a day, then 2x
+  if(ot > room + 0.001){ dt = r2(dt + ot - room); ot = r2(room); }
   return {rt, ot, dt};
 }
 function lineSplit(p){
@@ -4932,6 +4987,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
 const APP_VERSION = "v53";
+const APP_BUILD = 54;                     /* what the update check compares (sw.js CACHE "adman-field-v54"); the label above can stay put */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
@@ -4962,7 +5018,7 @@ async function checkUpdate(force){
   try{
     const r = await fetch("sw.js?check="+Date.now(), {cache:"no-store"});
     const m = (await r.text()).match(/adman-field-(v\d+)/);
-    if(m && verNum(m[1]) > verNum(APP_VERSION)) UPD.ready = m[1];
+    if(m && verNum(m[1]) > APP_BUILD) UPD.ready = m[1];
   }catch(e){}
   UPD.checking=false;
   showUpdate();
