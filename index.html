@@ -141,6 +141,11 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
   body.pabs #absCard{position:absolute;left:0;top:0;width:100%;border:0;box-shadow:none;margin:0}
   body.pabs #absCard .row{display:none}
   body.pabs .abst th, body.pabs .abst td{font-size:10.5pt;padding:4px 6px}
+  body.phere *{visibility:hidden}
+  body.phere #hereCard, body.phere #hereCard *{visibility:visible}
+  body.phere #hereCard{position:absolute;left:0;top:0;width:100%;border:0;box-shadow:none;margin:0}
+  body.phere #hereCard .row{display:none}
+  body.phere .abst th, body.phere .abst td{font-size:10pt;padding:4px 6px}
 }
 .savebar{position:sticky;top:calc(env(safe-area-inset-top,0px) + 114px);z-index:3;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 14px;margin:0 0 10px;border-radius:10px;background:var(--paper);border:1px solid var(--line);box-shadow:0 3px 12px rgba(0,0,0,.10);font-size:14px}
 .savebar.dirty{border-color:var(--warn);background:linear-gradient(rgba(184,114,12,.14),rgba(184,114,12,.14)),var(--paper)}
@@ -540,7 +545,7 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
 
 <!-- ======================= REPORTS ======================= -->
 <section id="v-reports" hidden>
-  <div class="card"><h2>Reports</h2><div class="body">
+  <div class="card" id="rCard"><h2>Reports</h2><div class="body">
     <div class="row">
       <label class="f">View<select id="rMode">
         <option value="week">Week</option><option value="month">Month</option><option value="quarter">Quarter</option><option value="range">Date range</option><option value="all">All time</option>
@@ -580,6 +585,23 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
       <button class="b red" id="aGo">Download absentee list</button>
     </div>
     <div id="absOut"></div>
+  </div></div>
+  <div class="card" id="hereCard"><h2>Who's here<span class="tag">who is on the clock, since when, and on which PO</span></h2><div class="body">
+    <div class="row">
+      <label class="f">Date<input type="date" id="hDate"></label>
+      <label class="f">Time<input type="time" id="hTime"></label>
+      <button class="b ghost sm" id="hNow">Now</button>
+      <label class="f">Crew<select id="hCrew"><option value="all">Day and night</option><option value="day">Day crew</option><option value="night">Night crew</option></select></label>
+      <label class="f">Project<select id="hProj"></select></label>
+      <label class="f">Foreman<select id="hFm"></select></label>
+      <label class="f">Sort by<select id="hSort"><option value="last">Last name</option><option value="first">First name</option><option value="fm">Foreman, then last name</option><option value="po">PO, then last name</option></select></label>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <div class="spacer"></div>
+      <button class="b ghost" id="hPrint">Print</button>
+      <button class="b red" id="hGo">Download who's here</button>
+    </div>
+    <div id="hereOut"></div>
   </div></div>
   <div id="reportOut"></div>
 </section>
@@ -1799,7 +1821,7 @@ const TABS = {
   super: ["daily","weekly","crew","jobs","clock","timeoff","safety","reports","export"],
   pm:    ["daily","weekly","crew","jobs","clock","timeoff","safety","reports","export","settings"],
   office:["daily","weekly","crew","jobs","clock","timeoff","safety","reports","export"],
-  safety:["crew","safety"],
+  safety:["crew","safety","reports"],
   admin: ["daily","weekly","crew","jobs","clock","timeoff","safety","reports","export","settings"]
 };
 function applyRole(){
@@ -1845,6 +1867,12 @@ const T = {
     d.setHours(h||0,m||0,0,0); return d.toISOString();
   }
 };
+/* when an open clock-in started: "6:00 AM" if today, "Thu 10/29 6:00 AM" any other day (a missed clock-out shows for what it is) */
+function sinceTxt(iso){
+  if(!iso || isNaN(new Date(iso))) return "unknown";
+  const d = T.dateOf(iso);
+  return (d===T.dateOf(T.now()) ? "" : DAYNAME[D.dow(d)].slice(0,3)+" "+D.short(d)+" ") + T.clock(iso);
+}
 function roundHrs(h){
   const r = +db.settings.roundTo||0;
   return r ? Math.round(h/r)*r : Math.round(h*100)/100;
@@ -2184,7 +2212,7 @@ function formHTML(f,i){
     const lineCost = (+c.rt||0)*r+(+c.ot||0)*r*s.otMult+(+c.dt||0)*r*s.dtMult;
     const op = c.punchId ? db.punches.find(x=>x.id===c.punchId && !x.tout) : null;
     return '<tr><td class="who"><select data-a="crewEmp" data-f="'+f.id+'" data-k="'+k+'"'+(c.punchId?' data-p="'+esc(c.punchId)+'"':"")+'>'+empOpts(c.empId)+'</select>'+
-      (op ? '<div class="mini" style="color:var(--red)">On the clock since '+T.clock(paidSpan(op).tin)+(paidSpan(op).rounded?' <span style="color:var(--ink-2)">(in at '+T.clock(op.tin)+')</span>':'')+'</div>' : c.open ? '<div class="mini">On the clock</div>' : "")+'</td>'+
+      (op ? '<div class="mini" style="color:var(--red)">On the clock since '+sinceTxt(paidSpan(op).tin)+(paidSpan(op).rounded?' <span style="color:var(--ink-2)">(in at '+T.clock(op.tin)+')</span>':'')+'</div>' : c.open ? '<div class="mini">On the clock</div>' : "")+'</td>'+
       ['rt','ot','dt'].map(h=>'<td class="n h-'+h+'" data-l="'+(h==="rt"?"Reg":h==="ot"?"O.T. 1.5×":"D.T. 2×")+'"><input class="h num" type="number" step="0.25" min="0" data-a="crewH" data-h="'+h+'" data-f="'+f.id+'" data-k="'+k+'" value="'+(c[h]||"")+'"></td>').join("")+
       '<td class="n num hrs" data-l="Hours" data-calc="rowhrs" data-f="'+f.id+'" data-k="'+k+'">'+hrs((+c.rt||0)+(+c.ot||0)+(+c.dt||0))+"</td>"+
       ($$ ? '<td class="n num cost" data-l="Cost" data-calc="rowcost" data-f="'+f.id+'" data-k="'+k+'">'+money(lineCost)+"</td>" : "")+
@@ -2982,7 +3010,11 @@ function fillSelect(el, opts, keep){
   if(keep && opts.some(o=>o[0]===keep)) el.value = keep;
 }
 function renderReports(){
+  const safetyOnly = !!ME && ME.role==="safety";                          // the safety team: the absentee list and who's here, no cost reports
+  $("rCard").hidden = safetyOnly; $("reportOut").hidden = safetyOnly;
   try{ renderAbsent(); }catch(e){ console.error("absentee list", e); }
+  try{ renderHere(); }catch(e){ console.error("who's here", e); }
+  if(safetyOnly) return;
   const all = collect();
   const $$ = money$();
   const weeks = weeksIn(all);
@@ -3247,6 +3279,84 @@ $("aGo").onclick = async ()=>{
     const zip = await AdmanExport.buildWeekly(TPL_WEEK, [], [{name:"Absentees", rows, widths:[26,13,18,24,9,46], landscape:true}], JSZip);
     const blob = await zip.generateAsync({type:"blob", mimeType:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
     dl(blob, safe("Adman Absentee List - "+D.us(A.date)+" "+T.clock(A.at))+".xlsx");
+  }catch(err){ tell("Could not build the file: "+err.message); }
+};
+/* ---------------------------------------------------------------- who's here
+   Everyone on the clock at the moment picked (now by default): when he clocked in, the PO he is on, who he works for, and
+   where the tablet put him at clock-in. Same "on the clock" test as the absentee list: a punch that started at or before
+   that moment and had not ended. An open punch older than 16 hours is listed apart as a likely missed clock-out and is not
+   counted as here. For the safety team's head count. */
+const HERE = {live:true};
+function hereNowFill(){ const n=new Date(); $("hDate").value=D.iso(n); $("hTime").value=String(n.getHours()).padStart(2,"0")+":"+String(n.getMinutes()).padStart(2,"0"); }
+const herePOs = p => ((p.jobs && p.jobs.length>1) ? p.jobs : [p.jobId]).map(id=>job(id)).filter(Boolean);
+function geoTxt(g){ if(!g) return ""; if(g.nofix) return "No GPS"; if(g.weak) return "GPS unsure"; if(g.ok===null) return "No site set"; return g.ok ? "On site" : fmtDist(g.dist)+" away"; }
+function whosHere(){
+  if(HERE.live || !$("hDate").value || !$("hTime").value) hereNowFill();
+  const date=$("hDate").value, at=T.atHM(date, $("hTime").value); if(!at) return null;
+  const t=ms(at), H16=16*3600000, crew=$("hCrew").value, fm=$("hFm").value, proj=$("hProj").value;
+  const best={}, stale={};
+  db.punches.forEach(p=>{
+    if(!p || !p.tin || !p.empId || p.__deleted || !emp(p.empId) || !canSeeEmp(p.empId)) return;
+    if(ms(p.tin) > t || (p.tout && ms(p.tout) <= t)) return;
+    if(crew!=="all" && okShift(p.shift)!==crew) return;
+    const into = (!p.tout && t-ms(p.tin) >= H16) ? stale : best;
+    if(!into[p.empId] || ms(p.tin) > ms(into[p.empId].tin)) into[p.empId] = p;          // the latest punch he is on
+  });
+  Object.keys(best).forEach(id=>{ delete stale[id]; });
+  const mk = p => { const e=emp(p.empId), jobs=herePOs(p); return {e, p, lead:leadOf(e.id), jobs, shift:okShift(p.shift)}; };
+  const keep = r => (!fm || (fm==="_none" ? !r.lead : (r.lead||{}).id===fm)) && (!proj || (proj==="_none" ? !r.jobs.some(j=>jobProj(j)) : r.jobs.some(j=>jobProj(j)===proj)));
+  const rows = Object.values(best).map(mk).filter(keep), old = Object.values(stale).map(mk).filter(keep);
+  const sort=$("hSort").value, key=r=>sort==="first" ? r.e.name : lastFirst(r.e.name), po=r=>(r.jobs[0]||{}).po||"\uffff";
+  const cmp = (a,b)=>(sort==="fm" ? ABC(a.lead?a.lead.name:"\uffff", b.lead?b.lead.name:"\uffff") : sort==="po" ? ABC(po(a),po(b)) : 0) || ABC(key(a),key(b));
+  rows.sort(cmp); old.sort(cmp);
+  return {date, at, rows, old, crew};
+}
+const herePO = r => r.jobs.map(j=>j.po).join(", ") || "No job";
+const hereJob = r => r.jobs.length>1 ? "On "+r.jobs.length+" jobs (split at clock-out)" : (r.jobs[0] ? (r.jobs[0].name||"") : "");
+function hereByPO(H){ const c={}; H.rows.forEach(r=>{ const k=(r.jobs[0]||{}).po||"No job"; c[k]=(c[k]||0)+1; }); return Object.keys(c).sort(ABC).map(k=>k+" "+c[k]); }
+function renderHere(){
+  const out=$("hereOut"); if(!out) return;
+  const leads=[...new Map(visCrew().map(e=>leadOf(e.id)).filter(Boolean).map(l=>[l.id,l])).values()].sort(byName);
+  fillSelect($("hFm"), [["","All foremen"]].concat(leads.map(l=>[l.id, l.name+(l.role==="super"?" (GF / super)":"")])).concat([["_none","No foreman set"]]), $("hFm").value);
+  const projs=[...new Set(visJobs().map(jobProj).filter(Boolean))].sort(ABC);
+  fillSelect($("hProj"), [["","All projects"]].concat(projs.map(p=>[p,p])).concat([["_none","Jobs with no project"]]), $("hProj").value);
+  const H = whosHere();
+  if(!H){ out.innerHTML='<div class="flag warn">Pick a date and a time.</div>'; return; }
+  const n=H.rows.length, by=hereByPO(H), all=H.crew==="all", geo=H.rows.some(r=>r.p.geoIn);
+  let html = '<div class="flag '+(n?"good":"warn")+'" style="margin-top:10px"><strong>'+n+"</strong> on the clock at "+T.clock(H.at)+", "+DAYNAME[D.dow(H.date)]+" "+D.us(H.date)+(HERE.live?" (now)":"")+"."+
+    (by.length>1?" By PO: "+esc(by.join(" · "))+".":"")+(HERE.live?' <span class="mini">Keeps itself current; punches from the tablets land within about 20 seconds.</span>':"")+"</div>";
+  if(n) html += '<table class="abst"><thead><tr><th>#</th><th>Employee</th><th>No.</th><th>Classification</th><th>Foreman</th><th>PO</th><th>Job</th><th>Clocked in</th>'+(all?"<th>Shift</th>":"")+(geo?"<th>Clock-in location</th>":"")+"</tr></thead><tbody>"+
+    H.rows.map((r,i)=>'<tr><td class="idx">'+(i+1)+'</td><td class="who" data-l="Employee">'+esc(r.e.name)+'</td><td class="no" data-l="No.">'+esc(r.e.pin||"")+'</td><td data-l="Classification">'+esc(r.e.cls||"")+
+      '</td><td data-l="Foreman">'+(r.lead?esc(r.lead.name):'<span class="mini">'+absLead(r)+'</span>')+'</td><td class="no" data-l="PO">'+esc(herePO(r))+'</td><td data-l="Job">'+esc(hereJob(r))+
+      '</td><td class="no" data-l="Clocked in">'+esc(sinceTxt(r.p.tin))+"</td>"+(all?'<td data-l="Shift">'+shiftName(r.shift)+"</td>":"")+(geo?'<td data-l="Clock-in location">'+esc(geoTxt(r.p.geoIn))+"</td>":"")+"</tr>").join("")+"</tbody></table>";
+  if(H.old.length) html += '<div class="flag warn" style="margin-top:12px">Still on the clock from an earlier day, <strong>not counted above</strong> (likely a missed clock-out): '+
+    H.old.map(r=>esc(r.e.name)+" ("+esc(herePO(r))+", since "+esc(sinceTxt(r.p.tin))+")").join(", ")+".</div>";
+  out.innerHTML = html;
+}
+["hCrew","hFm","hProj","hSort"].forEach(id=>$(id).onchange = renderHere);
+["hDate","hTime"].forEach(id=>$(id).onchange = ()=>{ HERE.live=false; renderHere(); });
+$("hNow").onclick = ()=>{ HERE.live=true; renderHere(); };
+setInterval(()=>{ try{ if(HERE.live && !$("v-reports").hidden && !editing()) renderHere(); }catch(e){} }, 60000);   // "now" stays now
+$("hPrint").onclick = ()=>{
+  renderHere();
+  document.body.classList.add("phere");
+  const done = ()=>{ document.body.classList.remove("phere"); window.removeEventListener("afterprint", done); };
+  window.addEventListener("afterprint", done); setTimeout(done, 60000);
+  try{ window.print(); }catch(e){ done(); tell("This device would not print. Download the list instead."); }
+};
+$("hGo").onclick = async ()=>{
+  const H = whosHere(); if(!H) return tell("Pick a date and a time.");
+  const B = v => ({v, bold:true}), by=hereByPO(H), geo=H.rows.some(r=>r.p.geoIn);
+  const line = r => [r.e.name, String(r.e.pin||""), r.e.cls||"", absLead(r), herePO(r), hereJob(r), sinceTxt(r.p.tin), shiftName(r.shift)].concat(geo?[geoTxt(r.p.geoIn)]:[]);
+  const rows = [[B("ADMAN ELECTRIC, INC.: Who's here, "+absCrewWord(H.crew)+", at "+T.clock(H.at)+" on "+DAYNAME[D.dow(H.date)]+" "+D.us(H.date))],
+    [H.rows.length+" on the clock"+(by.length?". By PO: "+by.join(", "):"")+". Pulled "+D.us(D.iso(new Date()))+" "+T.clock(new Date().toISOString())+(ME&&ME.name?" by "+ME.name:"")+"."], [],
+    [B("Employee"),B("Employee No."),B("Classification"),B("Foreman"),B("PO"),B("Job"),B("Clocked in"),B("Shift")].concat(geo?[B("Clock-in location")]:[])];
+  H.rows.forEach(r=>rows.push(line(r)));
+  if(H.old.length){ rows.push([], [B("Still on the clock from an earlier day, not counted above (likely a missed clock-out)")]); H.old.forEach(r=>rows.push(line(r))); }
+  try{
+    const zip = await AdmanExport.buildWeekly(TPL_WEEK, [], [{name:"On the clock", rows, widths:[26,13,16,22,18,30,20,8].concat(geo?[16]:[]), landscape:true}], JSZip);
+    const blob = await zip.generateAsync({type:"blob", mimeType:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+    dl(blob, safe("Adman Who's Here - "+D.us(H.date)+" "+T.clock(H.at))+".xlsx");
   }catch(err){ tell("Could not build the file: "+err.message); }
 };
 /* keep only the crew lines belonging to people under one leader; material stays with the whole form so it is left out here */
@@ -4344,7 +4454,7 @@ function rerender(){
   if(cur==="daily" && dailyDirty()){ saveBar(); return; }                 // their typing stays put; Save folds the new punches in
   try{
     if(cur==="daily") renderDaily(); else if(cur==="weekly") renderWeekly(); else if(cur==="clock") renderClock(); else if(cur==="safety") renderSafety();
-    else if(cur==="timeoff") renderTimeoff(); else if(cur==="crew") renderCrew(); else if(cur==="jobs") renderJobs(); else if(cur==="reports") renderAbsent();
+    else if(cur==="timeoff") renderTimeoff(); else if(cur==="crew") renderCrew(); else if(cur==="jobs") renderJobs(); else if(cur==="reports"){ renderAbsent(); renderHere(); }
     refreshBadge(); stamp();
   }catch(e){}
 }
@@ -4649,7 +4759,7 @@ function wireK(){
         case "gomulti": { const picks=(K.pick||[]).filter(id=>job(id)); if(!picks.length) break; K.multi=false; K.pick=[]; kClockIn(picks[0], picks.length>1?picks:null); break; }
         case "office": { const e=emp(K.empId); K.pin=""; K.msg=""; enterOffice(e); break; }
         case "back": K.screen="menu"; drawK(); break;
-        case "safety": { const op=openPunch(K.empId); if(!op) break; K.sj=op.jobId; K.sp=op.id; K.acked=[]; K.msg="On the clock since "+T.clock(op.tin)+"."; K.screen="safety"; drawK(); break; }
+        case "safety": { const op=openPunch(K.empId); if(!op) break; K.sj=op.jobId; K.sp=op.id; K.acked=[]; K.msg="On the clock since "+sinceTxt(op.tin)+"."; K.screen="safety"; drawK(); break; }
         case "ack": break;                                   // handled on the link itself
         case "home": K.screen="pin"; K.empId=null; K.pin=""; K.msg=""; drawK(); break;
         case "done": K.screen="pin"; K.empId=null; K.pin=""; drawK(); break;
@@ -4811,7 +4921,7 @@ async function addNewPunch(){
   const p = {id:uid(), empId:e.id, jobId:jid, date:d, shift:sh, tin:T.atHM(d, hin), tout:null, hours:0, hand:true};
   if(hout){ p.tout = T.atHM(d, hout); if(new Date(p.tout) < new Date(p.tin)){ const x=new Date(p.tout); x.setDate(x.getDate()+1); p.tout = x.toISOString(); } p.hours = punchHours(p); }
   const open = db.punches.filter(x=>x.empId===e.id && !x.tout);
-  if(!hout && open.length && !await ask(e.name+" is already on the clock since "+T.clock(open[0].tin)+" on "+(job(open[0].jobId)||{}).po+". Add a second open punch anyway?", true)) return;
+  if(!hout && open.length && !await ask(e.name+" is already on the clock since "+sinceTxt(open[0].tin)+" on "+(job(open[0].jobId)||{}).po+". Add a second open punch anyway?", true)) return;
   const dup = db.punches.find(x=>x.empId===e.id && x.date===d && x.jobId===jid && T.hm(x.tin)===T.hm(p.tin));
   if(dup) return tell("That punch is already there: "+e.name+", "+D.us(d)+", in at "+T.clock(p.tin)+".");
   db.punches.push(p); post(p); save(); closeNewPunch(); renderClock(); renderDaily();
@@ -4857,7 +4967,7 @@ function renderClock(){
   const gColor = k => gmode==="foreman" && k!=="office"&&k!=="none"&&k!=="~" ? ((emp(k)||{}).color||"") : "";
   if(open.length) html += '<div class="flag warn">On the clock right now: <strong>'+open.length+'</strong> · '+
     (open.length <= 15
-      ? open.map(p=>{ const e=emp(p.empId), j=job(p.jobId), ok=p.tin && !isNaN(new Date(p.tin)); return esc(e?e.name:"unknown man")+" ("+esc(j?j.po:"no job")+", since "+(ok?T.clock(p.tin):"unknown")+")"; }).join(", ")
+      ? open.map(p=>{ const e=emp(p.empId), j=job(p.jobId), ok=p.tin && !isNaN(new Date(p.tin)); return esc(e?e.name:"unknown man")+" ("+esc(j?j.po:"no job")+", since "+(ok?sinceTxt(p.tin):"unknown")+")"; }).join(", ")
       : (()=>{ const c={}; open.forEach(p=>{ const k=gmode==="none"?crewKey(p.empId):gKey(p); c[k]=(c[k]||0)+1; }); const lb=gmode==="none"?crewLabel:gLabel; return Object.keys(c).sort((a,b)=>ABC(lb(a),lb(b))).map(k=>esc(lb(k))+" "+c[k]).join(" · "); })())+"</div>";
   const dbl = doublesOn(tcDate).filter(ps=>canSeeEmp(ps[0].empId));
   if(dbl.length) html += '<div class="flag"><strong>Clocked in twice today:</strong> '+dbl.map(ps=>esc((emp(ps[0].empId)||{}).name||"?")+" ("+ps.map(p=>T.clock(p.tin)).join(" and ")+")").join(", ")+
@@ -5039,7 +5149,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
 const APP_VERSION = "v53";
-const APP_BUILD = 55;                     /* what the update check compares (sw.js CACHE "adman-field-v55"); the label above can stay put */
+const APP_BUILD = 56;                     /* what the update check compares (sw.js CACHE "adman-field-v56"); the label above can stay put */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
