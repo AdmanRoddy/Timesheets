@@ -1632,6 +1632,22 @@ function halfRound(t){
    switch it on or off for anyone (Employees tab) */
 const earlyOk = e => !!e && (e.early===true || (e.early!==false && (e.role==="foreman" || e.role==="super")));
 const jobGrace = j => hasNum(j && j.rndGrace) ? +j.rndGrace : 30;
+/* The grace repeats every hour after it starts (they take the half hour going home): on a 7:00-3:30 job, out at 3:00-3:29
+   pays through 3:30, 4:00-4:29 through 4:30, 5:00-5:29 through 5:30, and so on. Returns the paid end for a clock-out
+   inside one of those windows, else null (between :30 and the hour he rounds to the half hour as usual). */
+function graceEnd(j, quitIso, outIso){
+  const G = jobGrace(j)*60000, Q = ms(quitIso), out = ms(outIso);
+  if(!(G>0) || !(G<=3600000) || out < Q - G) return null;
+  const end = Q + Math.floor((out - (Q - G)) / 3600000)*3600000;
+  return out < end ? new Date(end).toISOString() : null;
+}
+/* his clock-out fell in a grace window on a half-hour-rule day: the half hour after it is already paid */
+function graceHit(p){
+  if(!p || !p.tout || okShift(p.shift)!=="day") return false;
+  const j = job(p.ruleJob) || job(p.jobId); if(!jobRound(j)) return false;
+  const quit = jobQuitIso(j, p.date || T.dateOf(p.tin)); if(!quit) return false;
+  return !!graceEnd(j, quit, p.tout);
+}
 function jobQuitIso(j, date){
   const st = T.atHM(date, jobStart(j)); if(!st) return null;
   return new Date(new Date(st).getTime() + ((jobSched(j)==="4x10"?10:8) + (+db.settings.mealMin||0)/60)*3600000).toISOString();
@@ -1669,8 +1685,7 @@ function paidSpan(p){
       if(start && ms(p.tin) < ms(start) && !earlyOk(emp(p.empId))) tin = start;   // in early: pays from the start of the shift (not supers, GFs, foremen)
       const mid = p.split && sameDayAll(p).some(x=>x && x.split===p.split && x.id!==p.id && String(x.tin) > String(p.tin));   // a split day's hand-off between POs is not a clock-out
       if(quit && p.tout && !mid){
-        const graceFrom = ms(quit) - jobGrace(j)*60000, out = ms(p.tout);
-        tout = out < graceFrom ? near(p.tout) : out < ms(quit) ? quit : near(p.tout);   // 3:00 to 3:29 pays through 3:30
+        tout = graceEnd(j, quit, p.tout) || near(p.tout);                    // 3:00-3:29 pays through 3:30, 5:00-5:29 through 5:30
       }
     }
     if(tout && ms(tout) <= ms(tin)){ tin = near(p.tin); tout = near(p.tout); if(ms(tout) <= ms(tin)){ tin = p.tin; tout = p.tout; } }   // a punch of a few minutes: real times
@@ -1697,7 +1712,8 @@ function paidNote(p){ const s=paidSpan(p); return s.rounded ? (s.tout ? " Paid "
      No day carries more than 4 hours of 1.5x (2 on a 4/10) Mon-Fri: anything past that is 2x. A day split across jobs
      counts its earlier legs toward the 8 and the 4.
      A day past 12 hours worked gets a 30-minute paid meal period (taken going home): paid as if he stayed 30 minutes
-     past his clock-out, so it falls in whatever OT or DT that half hour would have been.
+     past his clock-out, so it falls in whatever OT or DT that half hour would have been - unless his clock-out already
+     fell in an hourly grace window (out at 7:00 pays through 7:30), which is that same half hour.
      A day split evenly across several POs (clocked in on several at once): the day's Reg, OT and DT are figured by the
      clock as above, then every PO gets the same mix in proportion to its hours (to the half hour where the hours allow,
      the odd half hour to the earlier POs), so no one PO carries the early-morning DT or the late OT.
@@ -1947,7 +1963,7 @@ function paidMeal(p){
   const day = dayPunches(p); if(!day.some(x=>x.id===p.id)) day.push(p);
   if(day.some(x=>x.id!==p.id && (String(x.tin) > String(p.tin) || (String(x.tin)===String(p.tin) && String(x.id) > String(p.id))))) return 0;   // not his last punch today
   const worked = day.reduce((a,x)=>a+(x.tout ? workHours(x.id===p.id ? p : x) : 0), 0);
-  return worked > paidMealAfter() + 1e-9 ? m/60 : 0;
+  return worked > paidMealAfter() + 1e-9 && !graceHit(p) ? m/60 : 0;      // out at 7:00 already pays to 7:30: that IS the half hour, not another
 }
 function punchHours(p){
   if(!p.tout) return 0;
@@ -2775,7 +2791,7 @@ function rndNote(j){
   const g = jobGrace(j), gf = new Date(new Date(q).getTime()-g*60000).toISOString();
   return "Clock-in and clock-out go to the half hour: 1 to 15 minutes past goes back (7:10 is 7:00), 16 to 29 goes up (7:16 is 7:30). "+
     "Day shift pays from "+T.clock(st)+" however early he clocks in (supers, GFs and foremen from their real clock-in). "+
-    (g ? "Out at "+T.clock(gf)+" or later pays through "+T.clock(q)+". " : "")+"Real clock times stay on the Digital Timesheet.";
+    (g ? "Out at "+T.clock(gf)+" or later pays through "+T.clock(q)+", and the same half hour repeats every hour after (out at "+T.clock(new Date(new Date(gf).getTime()+2*3600000).toISOString())+" pays through "+T.clock(new Date(new Date(q).getTime()+2*3600000).toISOString())+"). " : "")+"Real clock times stay on the Digital Timesheet.";
 }
 async function offerRefigure(j){
   const from = D.add(D.weekEnd(D.iso(new Date())),-6);
@@ -5160,7 +5176,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
 const APP_VERSION = "v53";
-const APP_BUILD = 57;                     /* what the update check compares (sw.js CACHE "adman-field-v57"); the label above can stay put */
+const APP_BUILD = 58;                     /* what the update check compares (sw.js CACHE "adman-field-v58"); the label above can stay put */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
