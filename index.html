@@ -132,6 +132,17 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
 .flag.good{border-left-color:var(--ok);background:rgba(30,122,70,.09)}
 .flag.warn{border-left-color:var(--warn);background:rgba(184,114,12,.1)}
 #forms [hidden], #weekOut [hidden]{display:none!important}
+#hereCard .abst{width:100%}
+#hereCard .abst td.who, #hereCard .abst td.fm{white-space:nowrap}
+#hereCard .abst td.po{font-family:"IBM Plex Mono",monospace;font-size:13px;max-width:230px;line-height:1.5}
+#hereCard .abst td.po span{white-space:nowrap}
+#hereCard .abst td.jb{min-width:190px;max-width:320px}
+#hereCard .hereWrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+@media (max-width:1180px){
+  #hereCard .abst td.who, #hereCard .abst td.fm{white-space:normal}
+  #hereCard .abst td.po{max-width:140px}
+  #hereCard .abst td.jb{min-width:120px}
+}
 .abst td.idx{color:var(--ink-2);width:34px;font-family:"IBM Plex Mono",monospace;font-size:12px}
 .abst td.no{font-family:"IBM Plex Mono",monospace;white-space:nowrap}
 .abst td.who{font-weight:600}
@@ -3312,7 +3323,7 @@ function whosHere(){
   return {date, at, rows, old, crew};
 }
 const herePO = r => r.jobs.map(j=>j.po).join(", ") || "No job";
-const hereJob = r => r.jobs.length>1 ? "On "+r.jobs.length+" jobs (split at clock-out)" : (r.jobs[0] ? (r.jobs[0].name||"") : "");
+const hereJob = r => r.jobs.length>1 ? "On "+r.jobs.length+" jobs, split at clock-out" : (r.jobs[0] ? (r.jobs[0].name||"") : "");
 function hereByPO(H){ const c={}; H.rows.forEach(r=>{ const k=(r.jobs[0]||{}).po||"No job"; c[k]=(c[k]||0)+1; }); return Object.keys(c).sort(ABC).map(k=>k+" "+c[k]); }
 function renderHere(){
   const out=$("hereOut"); if(!out) return;
@@ -3325,10 +3336,10 @@ function renderHere(){
   const n=H.rows.length, by=hereByPO(H), all=H.crew==="all", geo=H.rows.some(r=>r.p.geoIn);
   let html = '<div class="flag '+(n?"good":"warn")+'" style="margin-top:10px"><strong>'+n+"</strong> on the clock at "+T.clock(H.at)+", "+DAYNAME[D.dow(H.date)]+" "+D.us(H.date)+(HERE.live?" (now)":"")+"."+
     (by.length>1?" By PO: "+esc(by.join(" · "))+".":"")+(HERE.live?' <span class="mini">Keeps itself current; punches from the tablets land within about 20 seconds.</span>':"")+"</div>";
-  if(n) html += '<table class="abst"><thead><tr><th>#</th><th>Employee</th><th>No.</th><th>Classification</th><th>Foreman</th><th>PO</th><th>Job</th><th>Clocked in</th>'+(all?"<th>Shift</th>":"")+(geo?"<th>Clock-in location</th>":"")+"</tr></thead><tbody>"+
+  if(n) html += '<div class="hereWrap"><table class="abst"><thead><tr><th>#</th><th>Employee</th><th>No.</th><th>Classification</th><th>Foreman</th><th>PO</th><th>Job</th><th>Clocked in</th>'+(all?"<th>Shift</th>":"")+(geo?"<th>Clock-in location</th>":"")+"</tr></thead><tbody>"+
     H.rows.map((r,i)=>'<tr><td class="idx">'+(i+1)+'</td><td class="who" data-l="Employee">'+esc(r.e.name)+'</td><td class="no" data-l="No.">'+esc(r.e.pin||"")+'</td><td data-l="Classification">'+esc(r.e.cls||"")+
-      '</td><td data-l="Foreman">'+(r.lead?esc(r.lead.name):'<span class="mini">'+absLead(r)+'</span>')+'</td><td class="no" data-l="PO">'+esc(herePO(r))+'</td><td data-l="Job">'+esc(hereJob(r))+
-      '</td><td class="no" data-l="Clocked in">'+esc(sinceTxt(r.p.tin))+"</td>"+(all?'<td data-l="Shift">'+shiftName(r.shift)+"</td>":"")+(geo?'<td data-l="Clock-in location">'+esc(geoTxt(r.p.geoIn))+"</td>":"")+"</tr>").join("")+"</tbody></table>";
+      '</td><td class="fm" data-l="Foreman">'+(r.lead?esc(r.lead.name):'<span class="mini">'+absLead(r)+'</span>')+'</td><td class="po" data-l="PO">'+(r.jobs.length ? r.jobs.map(j=>'<span>'+esc(j.po)+'</span>').join(", ") : "No job")+'</td><td class="jb" data-l="Job">'+esc(hereJob(r))+
+      '</td><td class="no" data-l="Clocked in">'+esc(sinceTxt(r.p.tin))+"</td>"+(all?'<td data-l="Shift">'+shiftName(r.shift)+"</td>":"")+(geo?'<td data-l="Clock-in location">'+esc(geoTxt(r.p.geoIn))+"</td>":"")+"</tr>").join("")+"</tbody></table></div>";
   if(H.old.length) html += '<div class="flag warn" style="margin-top:12px">Still on the clock from an earlier day, <strong>not counted above</strong> (likely a missed clock-out): '+
     H.old.map(r=>esc(r.e.name)+" ("+esc(herePO(r))+", since "+esc(sinceTxt(r.p.tin))+")").join(", ")+".</div>";
   out.innerHTML = html;
@@ -5149,7 +5160,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
 const APP_VERSION = "v53";
-const APP_BUILD = 56;                     /* what the update check compares (sw.js CACHE "adman-field-v56"); the label above can stay put */
+const APP_BUILD = 57;                     /* what the update check compares (sw.js CACHE "adman-field-v57"); the label above can stay put */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
