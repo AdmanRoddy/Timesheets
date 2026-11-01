@@ -791,7 +791,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     ["L", "M", "N"], ["O", "P", "Q"],
     [null, "R", "S"], [null, null, "T"],
   ];
-  const NOTEROW = [26, 28, 30, 32, 34, 36, 37];   // Mon..Sun lines under WORK DESCRIPTION
+
 
   function shiftFormula(f, off) {
     return f.replace(/([^A-Z0-9$]|^)(\$?[A-Z]{1,2}\$?)(\d+)/g,
@@ -904,21 +904,33 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     });
   }
 
-  /* ------------------------------------------------------ weekly time sheet */
-  const WBLK = 45;
+  /* ------------------------------------------------------ weekly time sheet
+     One block per job per week, built from the real form's own rows: the header, up to 30 men (on 18 pt rows instead
+     of the form's 25.5), the TOTAL row, WORK DESCRIPTION with one line a day, and the signature. 48 rows: one portrait
+     page at 75%, all the day columns across, and still one page when printed "fit all columns on one page". */
+  const WTPL = 45;                                   // rows in the template
+  const WEMP = 30;                                   // men per block
+  const WPLAN = [1, 2, 3, 4, 5, 6, 7].concat(Array.from({ length: WEMP - 2 }, (_, i) => 8 + (i % 13)),
+    [21, 22, 23, 24, 26, 28, 30, 32, 34, 36, 37, 38, 41]);   // template row behind each row of the block
+  const WBLK = WPLAN.length;
+  const WFIRST = 7, WLAST = 6 + WEMP, WTOTAL = WLAST + 1;
+  const WNOTES = Array.from({ length: 7 }, (_, i) => WTOTAL + 3 + i);   // Mon..Sun lines under WORK DESCRIPTION
   function weeklySheet(tpl, blocks) {
     const out = [];
     blocks.forEach((b, k) => {
       const off = k * WBLK;
       for (let n = 1; n <= WBLK; n++) {
-        let r = shiftRow(tpl.rows[n - 1], n, off);
+        const src = WPLAN[n - 1];
+        let r = shiftRow(tpl.rows[src - 1], src, n - src + off);
         if (n === 3) {
           r = put(r, "C" + (3 + off), b.weekEnding);
           r = put(r, "J" + (3 + off), b.jobName);
           r = put(r, "U" + (3 + off), b.jobNo);
         }
-        if (n >= 7 && n <= 21) {
-          const line = b.lines[n - 7];
+        if (n >= WFIRST && n <= WLAST) {
+          r = r.replace(/ ht="[\d.]+"/, ' ht="18"')
+               .replace(/(<c r="A\d+"[^>]*?><v>)[^<]*(<\/v>)/, "$1" + (n - WFIRST + 1) + "$2");   // line number 1..30
+          const line = b.lines[n - WFIRST];
           if (line) {
             r = put(r, "B" + (n + off), line.employee, false, line.style);
             for (let d = 0; d < 7; d++)
@@ -929,7 +941,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
               }
           }
         }
-        const ni = NOTEROW.indexOf(n);
+        if (n === WTOTAL)                                // the TOTAL row sums every man's line of this block
+          r = r.replace(/SUM\(([A-Z]{1,2})\d+:\1\d+\)/g, (m, c) => "SUM(" + c + (WFIRST + off) + ":" + c + (WLAST + off) + ")");
+        const ni = WNOTES.indexOf(n);
         if (ni >= 0 && b.notes && b.notes[ni]) r = put(r, "C" + (n + off), b.notes[ni]);
         out.push(r);
       }
@@ -937,12 +951,24 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     return assemble(tpl, out, blocks.length, WBLK, "W", null);
   }
 
-  /* ------------------------------------ daily time & material form */
-  const DBLK = 72;
-  const DESC_ROWS = [9, 10, 11, 12, 13, 14, 15, 16];
-  const MAT_ROWS = 23;      // rows 22..44
-  const EMP_ROWS = 23;      // rows 48..70
-  const MONEY_ROWS = [48, 49, 50, 51, 52];   // Labor, Overhead, Profit, Material, Total -> col H
+  /* ------------------------------------ daily time & material form
+     Built from the real form's own rows, shortened so one form prints on one letter page at full size: the header,
+     5 lines of job description, 8 material lines, and 23 crew lines with the money totals beside the first five
+     (49 rows; the form had 23 material lines, which pushed the crew onto a second page). A form with more lines than
+     that continues on the next form ("page 2 of 2"). */
+  const DTPL = 72;                                   // rows in the template
+  const DDESC = 5, DMAT = 8, DEMP = 23;
+  const DPLAN = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 19, 20, 21, 22]
+    .concat(Array.from({ length: DMAT - 2 }, (_, i) => 23 + i), [44, 45, 46, 47, 48, 49, 50, 51, 52],
+      Array.from({ length: DEMP - 6 }, (_, i) => 53 + i), [70]);   // template row behind each row of the form
+  const DBLK = DPLAN.length;
+  const DESC_ROWS = Array.from({ length: DDESC }, (_, i) => 9 + i);
+  const MAT0 = DPLAN.indexOf(22) + 1, EMP0 = DPLAN.indexOf(48) + 1;
+  const MONEY_ROWS = [0, 1, 2, 3, 4].map((i) => EMP0 + i);   // Labor, Overhead, Profit, Material, Total -> col H
+  const dailyMerges = (tm) => (tm || []).filter((z) => z[1] <= 8)
+    .concat(DESC_ROWS.map((r) => ["A", r, "H", r]))
+    .concat(Array.from({ length: DMAT }, (_, i) => ["B", MAT0 + i, "F", MAT0 + i]))
+    .concat(Array.from({ length: DEMP }, (_, i) => ["A", EMP0 + i, "C", EMP0 + i]));
 
   function wrap(text, width, max) {
     const lines = [];
@@ -967,7 +993,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       const off = k * DBLK;
       const desc = wrap(f.desc, 110, DESC_ROWS.length);
       for (let n = 1; n <= DBLK; n++) {
-        let r = shiftRow(tpl.rows[n - 1], n, off);
+        const src = DPLAN[n - 1];
+        let r = shiftRow(tpl.rows[src - 1], src, n - src + off);
         if (n === 4) {
           r = put(r, "B" + (4 + off), day.date);
           r = put(r, "D" + (4 + off), day.day);
@@ -979,8 +1006,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         }
         const di = DESC_ROWS.indexOf(n);
         if (di >= 0 && desc[di]) r = put(r, "A" + (n + off), desc[di]);
-        if (n >= 22 && n < 22 + MAT_ROWS) {
-          const m = f.materials[n - 22];
+        if (n >= MAT0 && n < MAT0 + DMAT) {
+          const m = f.materials[n - MAT0];
           if (m) {
             r = put(r, "A" + (n + off), m.qty, true);
             r = put(r, "B" + (n + off), m.desc);
@@ -988,8 +1015,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
             r = put(r, "H" + (n + off), r2((+m.qty || 0) * (+m.unit || 0)), true, MS().amount);
           }
         }
-        if (n >= 48 && n < 48 + EMP_ROWS) {
-          const c = f.crew[n - 48];
+        if (n >= EMP0 && n < EMP0 + DEMP) {
+          const c = f.crew[n - EMP0];
           if (c) {
             r = put(r, "A" + (n + off), c.employee);
             r = put(r, "D" + (n + off), c.rt, true);
@@ -1102,7 +1129,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
   /* pmSheets: [{name, blocks:[{weekEnding, jobName, jobNo, lines, notes}]}] */
   function buildWeekly(T, pmSheets, summaries, JSZipCtor) {
-    const tpl = parse(T, WBLK);
+    const tpl = parse(T, WTPL);
+    tpl.tail = pageSetup(tpl.tail, 75, 0.5);
     return pack(T, pmSheets.map((s) => ({
       name: s.name,
       xml: fillCached(weeklySheet(tpl, s.blocks)),
@@ -1113,15 +1141,28 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   /* days: [{tab, date, day, forms:[{jobNo, jobName, pm, desc, crew, materials, money}]}] */
   function buildDaily(T, days, JSZipCtor) {
     MONEYSTYLES = T.moneyStyles || {};
-    const tpl = parse(T, DBLK);
+    const tpl = parse(T, DTPL);
+    tpl.tail = pageSetup(tpl.tail, 100, 0.75);
+    const merges = dailyMerges(T.merges);
     return pack(T, days.map((d) => ({
       name: d.tab,
-      xml: fillCached(dailySheet(tpl, d, T.merges)),
+      xml: fillCached(dailySheet(tpl, d, merges)),
       drawing: drawingXml(tpl, d.forms.length, DBLK),
     })), [], JSZipCtor);
   }
 
-  root.AdmanExport = { buildWeekly, buildDaily };
+  /* print each form on one page: narrow side margins, centred, at a scale where the whole form fits */
+  function pageSetup(tail, scale, topBottom) {
+    tail = tail.replace(/<printOptions[^>]*\/>/, "")
+      .replace(/<pageMargins[^>]*\/>/, '<printOptions horizontalCentered="1"/><pageMargins left="0.25" right="0.25" top="' +
+        topBottom + '" bottom="' + topBottom + '" header="0.3" footer="0.3"/>');
+    return /<pageSetup /.test(tail)
+      ? tail.replace(/<pageSetup ([^>]*?)\/>/, (m, a) => '<pageSetup ' + (/scale="/.test(a) ? a.replace(/scale="\d+"/, 'scale="' + scale + '"') : 'scale="' + scale + '" ' + a) + "/>")
+      : tail + '<pageSetup paperSize="1" scale="' + scale + '" orientation="portrait"/>';
+  }
+  root.AdmanExport = { buildWeekly, buildDaily,
+    DAILY: { desc: DDESC, mat: DMAT, emp: DEMP }, WEEKLY: { emp: WEMP },
+    descLines: (t) => wrap(t, 110, 1e6) };
 })(typeof module !== "undefined" ? module.exports : window);
 </script>
 <script>
@@ -2962,10 +3003,10 @@ function sheetData(list){
       recs.forEach(r=>{
         if(r.form.desc && r.form.desc.trim()) notes[r.dow].push(r.form.desc.trim().replace(/\s*\n\s*/g,"; "));
       });
-      /* the weekly form holds 15 men per block: a bigger crew continues on the next block */
-      const parts = Math.max(1, Math.ceil(all.length/15));
+      /* the weekly form holds 30 men per block (one page): a bigger crew continues on the next block */
+      const per = AdmanExport.WEEKLY.emp, parts = Math.max(1, Math.ceil(all.length/per));
       for(let i=0;i<parts;i++){
-        const lines = all.slice(i*15, i*15+15);
+        const lines = all.slice(i*per, i*per+per);
         if(!lines.length) continue;
         blocks.push({weekEnding:D.us(we), jobName:j.name+(sh==="night"?"  NIGHT SHIFT":"")+(parts>1?"  (crew "+(i+1)+" of "+parts+")":""), jobNo:j.po, lines,
           notes: i===0 ? notes.map(a=>[...new Set(a)].join("  |  ")) : Array.from({length:7},()=>"")});
@@ -3928,13 +3969,14 @@ $("xGoDaily").onclick = async ()=>{
           const f=r.form, t=r.t;
           const crew=f.crew.filter(c=>c.empId).map(c=>({employee:(emp(c.empId)||{}).name||"", rt:+c.rt||0, ot:+c.ot||0, dt:+c.dt||0}));
           const mats=f.materials.filter(m=>(+m.qty||0)||(m.desc||"").trim()).map(m=>({qty:+m.qty||0, desc:m.desc||"", unit:$$?(+m.unit||0):0}));
-          /* the daily form holds 23 crew lines and 23 material lines: anything more continues on the next form */
-          const parts = Math.max(1, Math.ceil(crew.length/23), Math.ceil(mats.length/23));
+          /* one form prints on one page: 5 description lines, 8 material lines and 23 crew lines; anything more continues on the next form */
+          const L = AdmanExport.DAILY, dl = AdmanExport.descLines(f.desc||"");
+          const parts = Math.max(1, Math.ceil(crew.length/L.emp), Math.ceil(mats.length/L.mat), Math.ceil(dl.length/L.desc));
           return Array.from({length:parts},(_,i)=>({
             jobNo:r.job.po, jobName:r.job.name+(parts>1?"  (page "+(i+1)+" of "+parts+")":""), pm:r.pm.name,
-            desc: i===0 ? (f.desc||"") : "",
-            crew: crew.slice(i*23, i*23+23),
-            materials: mats.slice(i*23, i*23+23),
+            desc: dl.slice(i*L.desc, i*L.desc+L.desc).join("\n"),
+            crew: crew.slice(i*L.emp, i*L.emp+L.emp),
+            materials: mats.slice(i*L.mat, i*L.mat+L.mat),
             /* Labor, Overhead, Profit, Material, Total: on the last page only */
             money: (i===parts-1 && $$) ? [t.cost, t.ohAmt, t.prAmt, t.matCost, t.billed] : ["","","","",""]
           }));
@@ -5175,8 +5217,8 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v53";
-const APP_BUILD = 58;                     /* what the update check compares (sw.js CACHE "adman-field-v58"); the label above can stay put */
+const APP_VERSION = "v54";
+const APP_BUILD = 59;                     /* what the update check compares (sw.js CACHE "adman-field-v59"); the label above can stay put */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
