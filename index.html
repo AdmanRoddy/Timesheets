@@ -146,7 +146,11 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
 .abst td.idx{color:var(--ink-2);width:34px;font-family:"IBM Plex Mono",monospace;font-size:12px}
 .abst td.no{font-family:"IBM Plex Mono",monospace;white-space:nowrap}
 .abst td.who{font-weight:600}
-@media print{
+.clsTag{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:6px;background:var(--line);font-size:12px;font-weight:700;color:var(--ink);vertical-align:middle;white-space:nowrap}
+.clsSel{margin-left:6px;min-height:30px;padding:2px 22px 2px 6px;font-size:13px;width:auto;vertical-align:middle}
+.clsSel.on{border-color:var(--red);font-weight:700;color:var(--red)}
+@media print{.clsSel{appearance:none;-webkit-appearance:none;border:0;background:none;padding:0 0 0 6px;font-weight:700;font-size:12px}
+
   body.pabs *{visibility:hidden}
   body.pabs #absCard, body.pabs #absCard *{visibility:visible}
   body.pabs #absCard{position:absolute;left:0;top:0;width:100%;border:0;box-shadow:none;margin:0}
@@ -1296,9 +1300,33 @@ function foremanColor(id){ const f=foremanOf(id); return f && f.color ? f.color 
 const CLASSES = ["Superintendent","General Foreman","Nonworking Foreman","Foreman","Safety","Energy Marshall","Surveyor/BIM","JW w/ Welding","JW Cable Splicer","JW Tech","JW",
   "AP6","AP5","AP4","AP3","AP2","AP1","CE3","CE2","CE1","CW5","CW4","CW3","CW2","CW1","Helper"];
 const okShift = s => SHIFTS.includes(s) ? s : "day";
+/* Short classification tags beside names on the sheets. A man's standing class comes from the roster; the Weekly can set a
+   different class for one week (a JW filling in as foreman), stored per week ending in db.weekCls[we].c[empId] so the sheets
+   for that week keep it after he goes back. */
+const CLS_ABBR = {"Superintendent":"Supt","General Foreman":"GF","Nonworking Foreman":"NWF","Foreman":"F","Safety":"Safety","Energy Marshall":"EM",
+  "Surveyor/BIM":"Surv","JW w/ Welding":"JW-W","JW Cable Splicer":"JW-CS","JW Tech":"JW-T","JW":"JW"};
+const clsAbbr = c => c ? (CLS_ABBR[c]||c) : "";
+function weekClsOf(empId, date){ const w=(db.weekCls||{})[D.weekEnd(date)]; return (w && w.c && w.c[empId]) || ""; }
+function clsFor(empId, date){ const e=emp(empId); if(!e) return ""; return weekClsOf(empId, date) || e.cls || ""; }
+function clsTag(empId, date){ const c=clsFor(empId, date); if(!c) return ""; const wk=!!weekClsOf(empId, date);
+  return ' <span class="clsTag'+(wk?' wk':'')+'" title="'+esc(c)+(wk?" this week only":"")+'">'+esc(clsAbbr(c))+"</span>"; }
+const clsTxt = (empId, date) => { const c=clsAbbr(clsFor(empId, date)); return c ? "  "+c : ""; };
+const canCls = () => !!ME && ME.role!=="foreman";
+function setWeekCls(we, empId, cls){
+  db.weekCls = db.weekCls||{}; const w = db.weekCls[we] = db.weekCls[we]||{c:{}}; w.c = w.c||{};
+  if(cls) w.c[empId]=cls; else delete w.c[empId];
+  w._u = stampNow(); save();
+}
+function clsPick(empId, we){
+  const e=emp(empId)||{}, cur=weekClsOf(empId, we);
+  if(!canCls()) return clsTag(empId, we);
+  return ' <select class="clsSel'+(cur?" on":"")+'" data-cls-e="'+empId+'" title="Classification on the sheets for the week ending '+D.us(we)+' only. Blank = his usual ('+esc(e.cls||"none")+').">'+
+    '<option value="">'+esc(clsAbbr(e.cls)||"—")+'</option>'+
+    CLASSES.filter(c=>c!==e.cls).map(c=>'<option value="'+esc(c)+'"'+(c===cur?" selected":"")+">"+esc(clsAbbr(c))+"</option>").join("")+"</select>";
+}
 const DEFAULTS = {
   employees: [], pms: [], jobs: [], days: {},
-  punches: [], timeoff: [], kiosk: true,
+  punches: [], timeoff: [], kiosk: true, weekCls: {},
   settings: { otMult:1.5, dtMult:2, oh:10, profit:5, compound:true, ohBase:"labor", classRates:{}, adminPin:"0000",
               roundTo:0.25, mealMin:15, mealAfter:6, geoMode:"block", geoFt:1000, sched:"5x8", startTime:"07:00", autoSplit:true, earlyAs:"dt", nightShift:"swing", swingPct:17.3, gravePct:31.4, holidaysExtra:[], holidaysOff:[], remLeads:"instant, 48, 24", remMails:"" }
 };
@@ -2398,7 +2426,7 @@ function formHTML(f,i){
     const e = emp(c.empId); const r = lineRate(e, j, f.shift); const s=db.settings;
     const lineCost = (+c.rt||0)*r+(+c.ot||0)*r*s.otMult+(+c.dt||0)*r*s.dtMult;
     const op = c.punchId ? db.punches.find(x=>x.id===c.punchId && !x.tout) : null;
-    return '<tr><td class="who"><select data-a="crewEmp" data-f="'+f.id+'" data-k="'+k+'"'+(c.punchId?' data-p="'+esc(c.punchId)+'"':"")+'>'+empOpts(c.empId)+'</select>'+
+    return '<tr><td class="who"><select data-a="crewEmp" data-f="'+f.id+'" data-k="'+k+'"'+(c.punchId?' data-p="'+esc(c.punchId)+'"':"")+'>'+empOpts(c.empId)+'</select>'+clsTag(c.empId, curDate)+
       (op ? '<div class="mini" style="color:var(--red)">On the clock since '+sinceTxt(paidSpan(op).tin)+(paidSpan(op).rounded?' <span style="color:var(--ink-2)">(in at '+T.clock(op.tin)+')</span>':'')+'</div>' : c.open ? '<div class="mini">On the clock</div>' : "")+'</td>'+
       ['rt','ot','dt'].map(h=>'<td class="n h-'+h+'" data-l="'+(h==="rt"?"Reg":h==="ot"?"O.T. 1.5×":"D.T. 2×")+'"><input class="h num" type="number" step="0.25" min="0" data-a="crewH" data-h="'+h+'" data-f="'+f.id+'" data-k="'+k+'" value="'+(c[h]||"")+'"></td>').join("")+
       '<td class="n num hrs" data-l="Hours" data-calc="rowhrs" data-f="'+f.id+'" data-k="'+k+'">'+hrs((+c.rt||0)+(+c.ot||0)+(+c.dt||0))+"</td>"+
@@ -2675,7 +2703,7 @@ function weekBlock(j, days){
       return '<td class="n wkcell">'+vals+"</td>";
     }).join("");
     const col = foremanColor(e.id);
-    return '<tr><td'+(col?' style="background:#'+col+';color:#0b2339;border-left:5px solid #'+col+'"':'')+'>'+esc(e.name)+"</td>"+cells+'<td class="n num">'+hrs(sum)+"</td>"+($$?'<td class="n num">'+money(cost)+"</td>":"")+"</tr>";
+    return '<tr><td'+(col?' style="background:#'+col+';color:#0b2339;border-left:5px solid #'+col+'"':'')+'>'+esc(e.name)+clsPick(e.id, wkEnd)+"</td>"+cells+'<td class="n num">'+hrs(sum)+"</td>"+($$?'<td class="n num">'+money(cost)+"</td>":"")+"</tr>";
   }).join("");
   const legendF = [...new Set(emps.map(x=>foremanOf(x.id)).filter(f=>f&&f.color).map(f=>f.id))].map(emp);
   const legend = legendF.length ? '<div class="row" style="margin:0 0 8px;gap:12px">'+legendF.map(f=>'<span class="mini"><span class="swatch" style="background:#'+f.color+'"></span>'+esc(f.name)+"</span>").join("")+"</div>" : "";
@@ -2706,6 +2734,7 @@ function ensureForm(date, jobId){
   return f;
 }
 function wireWeekly(){
+  document.querySelectorAll("#weekOut .clsSel").forEach(el=>el.onchange=ev=>{ setWeekCls(wkEnd, el.dataset.clsE, ev.target.value); renderWeekly(); });
   document.querySelectorAll("#weekOut [data-w]").forEach(el=>el.onchange=ev=>{
     const [jobId,date,empId,h,sh] = el.dataset.w.split("|"); wkSec = okShift(sh);
     const v = ev.target.value;
@@ -3113,7 +3142,7 @@ function sheetData(list){
         r.form.crew.forEach(c=>{
           if(!c.empId) return;
           const e = emp(c.empId); if(!e) return;
-          const b = byEmp[c.empId] = byEmp[c.empId] || {employee:e.name, color:foremanColor(c.empId), hours:Array.from({length:7},()=>[0,0,0])};
+          const b = byEmp[c.empId] = byEmp[c.empId] || {employee:e.name+clsTxt(c.empId, we), color:foremanColor(c.empId), hours:Array.from({length:7},()=>[0,0,0])};
           b.hours[r.dow][0]+= +c.rt||0; b.hours[r.dow][1]+= +c.ot||0; b.hours[r.dow][2]+= +c.dt||0;
         });
       });
@@ -3570,7 +3599,7 @@ $("aGo").onclick = async ()=>{
   const rows = [[B("ADMAN ELECTRIC, INC.: Absentee list, "+absCrewWord(A.crew)+", at "+T.clock(A.at)+" on "+DAYNAME[D.dow(A.date)]+" "+D.us(A.date))],
     [A.rows.length+" of "+A.pool+" not on the clock"+(bits.length?": "+bits.join(", "):"")+". Pulled "+D.us(D.iso(new Date()))+" "+T.clock(new Date().toISOString())+(ME&&ME.name?" by "+ME.name:"")+"."], [],
     [B("Employee"),B("Employee No."),B("Classification"),B("Foreman"),B("Crew"),B("Status")]];
-  A.rows.forEach(r=>rows.push([r.e.name, String(r.e.pin||""), r.e.cls||"", absLead(r), shiftName(r.e.crew), r.status]));
+  A.rows.forEach(r=>rows.push([r.e.name, String(r.e.pin||""), clsFor(r.e.id, A.date)||"", absLead(r), shiftName(r.e.crew), r.status]));
   try{
     const zip = await AdmanExport.buildWeekly(TPL_WEEK, [], [{name:"Absentees", rows, widths:[26,13,18,24,9,46], landscape:true}], JSZip);
     const blob = await zip.generateAsync({type:"blob", mimeType:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
@@ -3643,7 +3672,7 @@ $("hPrint").onclick = ()=>{
 $("hGo").onclick = async ()=>{
   const H = whosHere(); if(!H) return tell("Pick a date and a time.");
   const B = v => ({v, bold:true}), by=hereByPO(H), geo=H.rows.some(r=>r.p.geoIn);
-  const line = r => [r.e.name, String(r.e.pin||""), r.e.cls||"", absLead(r), herePO(r), hereJob(r), sinceTxt(r.p.tin), shiftName(r.shift)].concat(geo?[geoTxt(r.p.geoIn)]:[]);
+  const line = r => [r.e.name, String(r.e.pin||""), clsFor(r.e.id, H.date)||"", absLead(r), herePO(r), hereJob(r), sinceTxt(r.p.tin), shiftName(r.shift)].concat(geo?[geoTxt(r.p.geoIn)]:[]);
   const rows = [[B("ADMAN ELECTRIC, INC.: Who's here, "+absCrewWord(H.crew)+", at "+T.clock(H.at)+" on "+DAYNAME[D.dow(H.date)]+" "+D.us(H.date))],
     [H.rows.length+" on the clock"+(by.length?". By PO: "+by.join(", "):"")+". Pulled "+D.us(D.iso(new Date()))+" "+T.clock(new Date().toISOString())+(ME&&ME.name?" by "+ME.name:"")+"."], [],
     [B("Employee"),B("Employee No."),B("Classification"),B("Foreman"),B("PO"),B("Job"),B("Clocked in"),B("Shift")].concat(geo?[B("Clock-in location")]:[])];
@@ -4206,7 +4235,7 @@ $("xGoDaily").onclick = async ()=>{
         day: DAYNAME[D.dow(date)]+(sh==="night"?": Night":""),
         forms: byDate[key].flatMap(r=>{
           const f=r.form, t=r.t;
-          const crew=f.crew.filter(c=>c.empId).map(c=>({employee:(emp(c.empId)||{}).name||"", rt:+c.rt||0, ot:+c.ot||0, dt:+c.dt||0}));
+          const crew=f.crew.filter(c=>c.empId).map(c=>({employee:((emp(c.empId)||{}).name||"")+clsTxt(c.empId, date), rt:+c.rt||0, ot:+c.ot||0, dt:+c.dt||0}));
           const mats=f.materials.filter(m=>(+m.qty||0)||(m.desc||"").trim()).map(m=>({qty:+m.qty||0, desc:m.desc||"", unit:$$?(+m.unit||0):0}));
           /* one form prints on one page: 5 description lines, 8 material lines and 23 crew lines; anything more continues on the next form */
           const L = AdmanExport.DAILY, dl = AdmanExport.descLines(f.desc||"");
@@ -4317,11 +4346,13 @@ function sbTag(){
 const DIRTY_KEY = "adman_field_dirty";
 function rowSig(o){ return JSON.stringify(Object.assign({}, o, {updatedAt:undefined})); }
 function setSig(){ return JSON.stringify(Object.assign({}, db.settings, {_u:undefined})); }
+function wkSig(we){ return JSON.stringify(((db.weekCls||{})[we]||{}).c||{}); }
 function primeSnap(){
   SB.snap = {};
   SB_TABLES.forEach(k=>(db[k]||[]).forEach(o=>{ if(o&&o.id) SB.snap[k+"/"+o.id] = rowSig(o); }));
   Object.keys(db.days||{}).forEach(d=>{ SB.snap["days/"+d] = daySig(db.days[d]); });
   SB.snap["settings/app"] = setSig();
+  Object.keys(db.weekCls||{}).forEach(we=>{ SB.snap["wk/"+we] = wkSig(we); });
 }
 function saveDirty(){ try{ localStorage.setItem(DIRTY_KEY, JSON.stringify([...SB.dirty])); }catch(e){} }
 function settle(path, sig){ SB.snap[path] = sig; SB.dirty.delete(path); }
@@ -4340,6 +4371,10 @@ function markChanges(){
     const sig = setSig();
     if(SB.snap["settings/app"] !== sig){ db.settings._u = stampNow(); SB.snap["settings/app"] = sig; hit("settings/app"); }
   }
+  Object.keys(db.weekCls||{}).forEach(we=>{
+    const sig = wkSig(we), path = "wk/"+we;
+    if(SB.snap[path] !== sig){ db.weekCls[we]._u = stampNow(); SB.snap[path] = sig; hit(path); }
+  });
   Object.keys(db.days||{}).forEach(d=>{
     const sig = daySig(db.days[d]);
     const path = "days/"+d;
@@ -4552,6 +4587,7 @@ async function sbPushAuthoritative(){
   SB_TABLES.forEach(k=>(db[k]||[]).forEach(o=>{ if(o&&o.id) SB.dirty.add(k+"/"+o.id); }));
   Object.keys(db.days||{}).forEach(d=>SB.dirty.add("days/"+d));
   SB.dirty.add("settings/app");
+  Object.keys(db.weekCls||{}).forEach(we=>SB.dirty.add("wk/"+we));
   await sbPushAll();
 }
 async function sbPushAll(){
@@ -4617,6 +4653,16 @@ async function sbPushAll_(){
     const {error} = await SB.client.from("settings")
       .upsert([{id:"app", data:{settings:db.settings}, updated_at:at}]);
     if(error) trouble.push("settings: "+error.message); else sent.push("settings/app");
+  }
+  /* week classifications ride in the settings table, one row per week ending: id "wk:2026-10-25" */
+  if(SB.role!=="tablet"){
+    const wks = Object.keys(db.weekCls||{}).filter(we=>SB.dirty.has("wk/"+we));
+    if(wks.length){
+      const rows = wks.map(we=>({id:"wk:"+we, data:{cls:(db.weekCls[we]||{}).c||{}}, updated_at:(db.weekCls[we]||{})._u||stampNow()}));
+      const {data:back, error} = await SB.client.from("settings").upsert(rows).select("id,updated_at");
+      if(error) trouble.push("week classes: "+error.message);
+      else { wks.forEach(we=>sent.push("wk/"+we)); (back||[]).forEach(r=>{ const we=String(r.id).slice(3); if(db.weekCls[we] && r.updated_at) db.weekCls[we]._u = r.updated_at; }); }
+    }
   }
   for(const t of (db.tombs||[])){
     if(SB.role==="tablet" && officeTables.includes(t.k)) continue;
@@ -4727,12 +4773,25 @@ async function sbPull(){
     const {data:sd} = await SB.client.from("settings").select("data,updated_at").eq("id","app").maybeSingle();
     if(sd && sd.data && sd.data.settings && newer(sd.updated_at, db.settings._u))
       { db.settings = Object.assign({}, DEFAULTS.settings, sd.data.settings, { _u: sd.updated_at }); took.push("settings/app"); SB.changed = true; }
+    {
+      let wq = SB.client.from("settings").select("id,data,updated_at").like("id","wk:%");
+      if(db._since.wk) wq = wq.gte("updated_at", new Date(new Date(db._since.wk).getTime() - 10*60000).toISOString());
+      const {data:wd, error:we2} = await wq;
+      if(we2) trouble.push("week classes: "+we2.message);
+      db.weekCls = db.weekCls||{};
+      (wd||[]).forEach(r=>{
+        const we = String(r.id).slice(3); if(!r.data || typeof r.data.cls!=="object") return;
+        if(r.updated_at && (!db._since.wk || r.updated_at > db._since.wk)) db._since.wk = r.updated_at;
+        if(newer(r.updated_at, (db.weekCls[we]||{})._u)){ db.weekCls[we] = {c:r.data.cls||{}, _u:r.updated_at}; took.push("wk/"+we); SB.changed = true; }
+      });
+    }
     sanitize(db);
     if(!trouble.some(t=>t.startsWith("punches:"))) healDays();
     took.forEach(path=>{
       if(path==="settings/app") return settle(path, setSig());
       const [k, ...rest] = path.split("/"), id = rest.join("/");
       if(k==="days"){ if(db.days[id]) settle(path, daySig(db.days[id])); return; }
+      if(k==="wk"){ settle(path, wkSig(id)); return; }
       const o = (db[k]||[]).find(x=>String(x.id)===id); if(o) settle(path, rowSig(o));
     });
     markChanges();
@@ -5289,7 +5348,7 @@ function renderClock(){
   const rowOf = p=>{
         const e=emp(p.empId), r=lineRate(e, job(p.jobId), p.shift);
         return '<tr><td class="who"><select data-pp="'+p.id+'" data-f="empId">'+
-          crewOnly().filter(x=>canSeeEmp(x.id)||x.id===p.empId).sort(byName).map(x=>'<option value="'+x.id+'"'+(x.id===p.empId?" selected":"")+">"+esc(x.name)+"</option>").join("")+"</select></td>"+
+          crewOnly().filter(x=>canSeeEmp(x.id)||x.id===p.empId).sort(byName).map(x=>'<option value="'+x.id+'"'+(x.id===p.empId?" selected":"")+">"+esc(x.name)+"</option>").join("")+"</select>"+clsTag(p.empId, p.date||tcDate)+"</td>"+
           '<td class="jb" data-l="Job"><select data-pp="'+p.id+'" data-f="jobId">'+
           jobOptHTML(db.jobs.filter(x=>canSeeJob(x.id)||x.id===p.jobId), p.jobId, "", false, true)+"</select></td>"+
           '<td class="sh" data-l="Shift"><select data-pp="'+p.id+'" data-f="shift"><option value="day"'+(p.shift!=="night"?" selected":"")+'>Day</option><option value="night"'+(p.shift==="night"?" selected":"")+'>Night</option></select></td>'+
@@ -5550,8 +5609,8 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v64";                /* the label people see: from v63 on it is the same number as the build */
-const APP_BUILD = 64;                     /* what the update check compares (sw.js CACHE "adman-field-v64"); bump both together */
+const APP_VERSION = "v65";                /* the label people see: from v63 on it is the same number as the build */
+const APP_BUILD = 65;                     /* what the update check compares (sw.js CACHE "adman-field-v65"); bump both together */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
