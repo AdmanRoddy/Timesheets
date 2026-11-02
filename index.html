@@ -722,13 +722,17 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
       <label class="f">Job<select id="xPo"></select></label>
       <label class="f">Shift<select id="xShift"><option value="">Day + night</option><option value="day">Day</option><option value="night">Night</option></select></label>
     </div>
+    <div class="row" id="xMoneyWrap" hidden style="margin-top:9px">
+      <label class="jact" style="white-space:normal;align-items:flex-start;padding-bottom:0" title="Off each time you sign in. Supers, foremen and the office never get money in their files."><input type="checkbox" id="xMoney"> Include money in the download (rates, labor cost, overhead, profit, material prices, billing)</label>
+    </div>
     <div id="xPreview"></div>
     <div class="row" style="margin-top:4px">
       <button class="b red" id="xGo">Weekly time sheets</button>
       <button class="b red" id="xGoDaily">Daily time &amp; material forms</button>
     </div>
     <p class="hint"><strong>Weekly</strong>: one tab per PM on the weekly form, a block per job per week (night blocks are marked). Job descriptions land on the Monday to Sunday lines under WORK DESCRIPTION. A Totals tab comes along.</p>
-    <p class="hint"><strong>Daily</strong>: one tab per day worked, on the Daily Time &amp; Material form, one form per job. <span id="xMoneyHint"></span></p>
+    <p class="hint"><strong>Daily</strong>: one tab per day worked, on the Daily Time &amp; Material form, one form per job.</p>
+    <p class="hint" id="xMoneyHint"></p>
     <div id="xOut"></div>
   </div></div>
 </section>
@@ -1965,13 +1969,22 @@ function sumTotals(list){
 let ME = null;                                             // {id,name,role}
 const money$   = () => !!ME && (ME.role==="pm" || ME.role==="admin");          // office admin sees no rates, pay or billing
 /* PMs and admins can see money; on the Daily, Weekly and Digital Timesheet it stays hidden until they switch it on.
-   Every sign-in starts with it off. Reports and the Excel downloads are not affected. */
+   Every sign-in starts with it off. Reports are not affected. The Excel downloads have their own switch on the
+   Download page (xMoney), also off at every sign-in: off means hours only, no rates, prices or dollars in either file. */
 let SHOW$ = false;
 const show$ = () => money$() && SHOW$;
 function setShow$(on){
   SHOW$ = !!on && money$();
   document.querySelectorAll(".moneyChk").forEach(c=>{ c.checked = SHOW$; });
 }
+const xMoney$ = () => money$() && !!($("xMoney")||{}).checked;   // money goes into the Excel downloads
+function xMoneyNote(){
+  const h = $("xMoneyHint"); if(!h) return;
+  h.textContent = !money$() ? "The dollar rows are left blank on your copy."
+    : xMoney$() ? "Money is on: the daily forms carry labor, overhead, profit, material prices and total, and the weekly Totals tab carries the dollars."
+                : "Money is off: both files carry hours only, with no rates, material prices or dollars. Tick Include money above to put them in.";
+}
+function xMoneyOff(){ const c = $("xMoney"); if(c) c.checked = false; xMoneyNote(); }
 const canRates = () => money$();                          // PMs and admins set cost rates
 const canRoles = () => !!ME && (ME.role==="admin" || ME.role==="office");
 const canEarly = () => !!ME && (ME.role==="admin" || ME.role==="pm");    // who may set "paid from his real clock-in"
@@ -1988,6 +2001,7 @@ const TABS = {
 };
 function applyRole(){
   document.querySelectorAll(".moneyTog").forEach(el=>{ el.hidden = !money$(); });
+  $("xMoneyWrap").hidden = !money$(); if(!money$()) xMoneyOff(); else xMoneyNote();
   const allowed = TABS[(ME&&ME.role)||"super"] || TABS.super;
   document.querySelectorAll("nav button").forEach(b=>{ b.hidden = !allowed.includes(b.dataset.v); });
   const cur = document.querySelector('nav button[aria-current="true"]');
@@ -4023,7 +4037,7 @@ function fillScopeOptions(){
   if(!$("xDay").value)  $("xDay").value  = worked.length?worked[worked.length-1]:D.iso(new Date());
   if(!$("xFrom").value) $("xFrom").value = worked.length?worked[0]:D.iso(new Date());
   if(!$("xTo").value)   $("xTo").value   = worked.length?worked[worked.length-1]:D.iso(new Date());
-  $("xMoneyHint").textContent = money$() ? "Labor, overhead, profit, material and total are filled in." : "The dollar rows are left blank on your copy.";
+  xMoneyNote();
   showScope();
 }
 function showScope(){
@@ -4107,6 +4121,7 @@ function preview(){
   : '<div class="flag">Nothing entered for '+esc(label)+".</div>")+gapFlags(g)+
     (sbCfg().url && !SB.on ? '<div class="flag"><strong>This device is not syncing</strong>, so these are only the hours entered on this device. Settings, Sync, Connect, then come back here.</div>' : "");
 }
+$("xMoney").onchange = ()=>{ xMoneyNote(); $("xOut").innerHTML = ""; };
 ["xScope","xDay","xWeek","xMonth","xQtr","xFrom","xTo","xPm","xPo","xShift"].forEach(id=>{
   $(id).onchange = ()=> (id==="xScope" ? showScope() : preview());
 });
@@ -4117,7 +4132,7 @@ $("xGo").onclick = async ()=>{
   try{
     const sheets = sheetData(recs);
     if(!sheets.length) throw new Error("No hours in "+label+" are attached to a job with a PM.");
-    const $$ = money$();
+    const $$ = xMoney$();
     const months = [...new Set(recs.map(r=>D.mon(r.date)))].sort();
     const hdr = ["Project manager","Job","Shift","Hours"].concat($$?["Labor","Material","Overhead","Profit","Billed"]:[]);
     const rows = [[{v:"ADMAN ELECTRIC, INC.: "+label,bold:true}],[], hdr.map(h=>({v:h,bold:true}))];
@@ -4144,7 +4159,7 @@ $("xGo").onclick = async ()=>{
       ? '<div class="flag good">Checked: '+hrs(inFile)+' hours on the weekly sheets'+(gp.wkend.length?", the same as the dailies less the weekend hours the form has no column for.":", the same as the dailies.")+'</div>'
       : '<div class="flag"><strong>Check this file:</strong> '+hrs(inFile)+' hours on the sheets, but '+hrs(gp.onWeekly)+' on the dailies. Tell Josh.</div>';
     $("xOut").innerHTML = check + gapFlags(gp) + '<div class="flag good">Built '+sheets.length+" PM tab"+(sheets.length===1?"":"s")+
-      " with "+blocks+" week block"+(blocks===1?"":"s")+", plus Totals.</div>";
+      " with "+blocks+" week block"+(blocks===1?"":"s")+", plus Totals."+(money$() ? ($$ ? " Money is in this file." : " Hours only: no money in this file.") : "")+"</div>";
   }catch(err){ $("xOut").innerHTML='<div class="flag">Could not build the file: '+esc(err.message)+"</div>"; }
 };
 
@@ -4152,7 +4167,7 @@ $("xGoDaily").onclick = async ()=>{
   const {s,recs,label} = scoped(); if(!s) return;
   $("xOut").innerHTML = '<div class="flag warn">Building…</div>';
   try{
-    const $$ = money$();
+    const $$ = xMoney$();
     const byDate = {};
     recs.forEach(r=>{ (byDate[r.date+"|"+r.shift]=byDate[r.date+"|"+r.shift]||[]).push(r); });
     const days = Object.keys(byDate).sort().map(key=>{
@@ -4190,7 +4205,7 @@ $("xGoDaily").onclick = async ()=>{
                                                        : '<div class="flag"><strong>Check this file:</strong> '+hrs(inFile)+' hours in it, '+hrs(g.daily)+' on the dailies. Tell Josh.</div>')+
       (g.noJob.length||g.noMan.length ? gapFlags({wkend:[], noJob:g.noJob, noMan:g.noMan}) : "")+
       '<div class="flag good">Built '+days.length+" day tab"+(days.length===1?"":"s")+
-      " holding "+n+" job form"+(n===1?"":"s")+".</div>";
+      " holding "+n+" job form"+(n===1?"":"s")+"."+(money$() ? ($$ ? " Money is in this file." : " Hours only: no money in this file.") : "")+"</div>";
   }catch(err){ $("xOut").innerHTML='<div class="flag">Could not build the file: '+esc(err.message)+"</div>"; }
 };
 
@@ -4863,11 +4878,11 @@ function kiosk(on){
   db.kiosk = !!on; save();
   $("kiosk").hidden = !on;
   document.querySelectorAll("header.top,nav,main").forEach(el=>el.hidden = !!on);
-  if(on){ ME = null; setShow$(false); K = {screen:"pin", pin:"", empId:null, msg:"", calMon:null, selA:null, selB:null, kind:"Vacation", note:""}; drawK(); try{ paintHoliday(); }catch(e){} }
+  if(on){ ME = null; setShow$(false); xMoneyOff(); K = {screen:"pin", pin:"", empId:null, msg:"", calMon:null, selA:null, selB:null, kind:"Vacation", note:""}; drawK(); try{ paintHoliday(); }catch(e){} }
 }
 function enterOffice(e){
   ME = {id:e.id, name:e.name, role:e.role};
-  setShow$(false);
+  setShow$(false); xMoneyOff();
   kiosk(false); applyRole(); renderDaily(); refreshBadge(); stamp();
 }
 function kIdle(){
@@ -5508,7 +5523,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
 const APP_VERSION = "v54";
-const APP_BUILD = 61;                     /* what the update check compares (sw.js CACHE "adman-field-v61"); the label above can stay put */
+const APP_BUILD = 62;                     /* what the update check compares (sw.js CACHE "adman-field-v62"); the label above can stay put */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
