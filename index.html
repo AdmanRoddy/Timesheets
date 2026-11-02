@@ -157,6 +157,19 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
   body.phere #hereCard{position:absolute;left:0;top:0;width:100%;border:0;box-shadow:none;margin:0}
   body.phere #hereCard .row{display:none}
   body.phere .abst th, body.phere .abst td{font-size:10pt;padding:4px 6px}
+  body.ptof{background:#fff!important}
+  body.ptof > *:not(main), body.ptof main > *:not(#v-timeoff), body.ptof #v-timeoff > *:not(#tofCard){display:none!important}
+  body.ptof #tofCard{border:0!important;box-shadow:none!important;margin:0!important;background:#fff!important}
+  body.ptof #tofCard > h2, body.ptof #tofCard .row, body.ptof #tofCard .hint{display:none!important}
+  body.ptof #tofCard .body{padding:0!important;overflow:visible!important}
+  body.ptof #tofCard, body.ptof #tofCard *{color:#000!important}
+  body.ptof .tofcal{min-width:0}
+  body.ptof .tofcal th{background:#fff!important;border-color:#777!important;font-size:9pt}
+  body.ptof .tofcal td{height:0.92in;border-color:#777!important;background:#fff!important;opacity:1;font-size:8.5pt}
+  body.ptof #tofCard .tofcal td.out .dn{color:#aaa!important}
+  body.ptof .tofcal li{background:none!important;border-left:2px solid #000!important;border-radius:0!important}
+  body.ptof .tofcal li.pend{border-left:2px dashed #666!important}
+  body.ptof .toft th, body.ptof .toft td{font-size:9pt;padding:3px 5px;border-color:#888!important}
 }
 .savebar{position:sticky;top:calc(env(safe-area-inset-top,0px) + 114px);z-index:3;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 14px;margin:0 0 10px;border-radius:10px;background:var(--paper);border:1px solid var(--line);box-shadow:0 3px 12px rgba(0,0,0,.10);font-size:14px}
 .savebar.dirty{border-color:var(--warn);background:linear-gradient(rgba(184,114,12,.14),rgba(184,114,12,.14)),var(--paper)}
@@ -205,6 +218,55 @@ tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
 .k-top .b.ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.4)}
 .k-wrap{flex:1;display:flex;align-items:flex-start;justify-content:center;padding:18px 14px 40px}
 .k-card{background:var(--paper);border:1px solid var(--line);border-radius:14px;width:100%;max-width:520px;overflow:hidden}
+/* holiday touches on the clock-in screen: a layer behind the keypad card, so nothing ever covers a button */
+#holiFx{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:0;color:#6b7380}
+#kiosk>*:not(#holiFx){position:relative;z-index:1}
+#holiFx span,#holiFx i,#holiFx div,#holiFx svg{position:absolute;display:block}
+.hf-fall{top:0;animation:hfFall linear infinite;will-change:transform}
+@keyframes hfFall{from{transform:translate3d(0,-12vh,0) rotate(0deg)}to{transform:translate3d(var(--dx,30px),112vh,0) rotate(var(--rot,200deg))}}
+.hf-rise{bottom:0;animation:hfRise linear infinite;will-change:transform}
+@keyframes hfRise{0%{transform:translate3d(0,10vh,0) scale(.8);opacity:0}10%{opacity:.9}88%{opacity:.9}100%{transform:translate3d(var(--dx,20px),-110vh,0) scale(1.1);opacity:0}}
+.hf-snow{color:#7fb3e0;text-shadow:0 0 3px rgba(60,120,190,.35)}
+.hf-fw{width:0;height:0}
+.hf-fw i{left:0;top:0;width:6px;height:6px;margin:-3px;border-radius:50%;opacity:0;background:var(--c);box-shadow:0 0 6px var(--c);animation:hfBurst var(--t,3s) ease-out var(--d,0s) infinite}
+@keyframes hfBurst{0%{transform:rotate(var(--a)) translateY(0) scale(1);opacity:0}6%{opacity:1}55%{opacity:1}100%{transform:rotate(var(--a)) translateY(calc(var(--r,70px) * -1)) scale(.35);opacity:0}}
+.hf-walk{left:0;bottom:20px;animation:hfWalkL var(--t,26s) linear infinite}
+@keyframes hfWalkL{from{transform:translateX(108vw)}to{transform:translateX(-18vw)}}
+.hf-walk>span{position:relative!important;animation:hfStrut .9s ease-in-out infinite}
+.hf-walk.hop>span{animation:hfHop .75s ease-in-out infinite}
+@keyframes hfStrut{0%,100%{transform:translateY(0) rotate(-5deg)}50%{transform:translateY(-3px) rotate(5deg)}}
+@keyframes hfHop{0%,100%{transform:translateY(0)}45%{transform:translateY(-24px)}}
+.hf-float{animation:hfFloat var(--t,16s) ease-in-out infinite alternate}
+@keyframes hfFloat{0%{transform:translate(0,0)}25%{transform:translate(5vw,-5vh)}50%{transform:translate(10vw,2vh)}75%{transform:translate(4vw,6vh)}100%{transform:translate(12vw,-2vh)}}
+.hf-bob{animation:hfBob var(--t,3s) ease-in-out infinite alternate}
+@keyframes hfBob{from{transform:translateY(0)}to{transform:translateY(var(--h,16px))}}
+.hf-ball{width:34px;height:34px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff 0 9%,#dfe9f5 22%,#8ea9c9 58%,#4d6788 100%);box-shadow:0 0 16px 5px rgba(255,205,90,.7);animation:hfDrop 14s ease-in infinite}
+@keyframes hfDrop{0%{transform:translateY(0)}70%,100%{transform:translateY(var(--fall,50vh))}}
+.hf-ny{opacity:0;animation:hfNy 14s linear infinite}
+@keyframes hfNy{0%,70%{opacity:0;transform:scale(.85)}75%,96%{opacity:1;transform:scale(1)}100%{opacity:0}}
+body.holi-stpat #kiosk{background:#dcefe0}
+body.holi-stpat .k-top{background:#0f6a38}
+body.holi-stpat .k-card{border-color:#5fae74}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .hf-snow{color:#fff}:root:not([data-theme="light"]) #holiFx{color:#c9d1da}:root:not([data-theme="light"]) body.holi-stpat #kiosk{background:#0c2617}}
+:root[data-theme="dark"] .hf-snow{color:#fff}:root[data-theme="dark"] #holiFx{color:#c9d1da}:root[data-theme="dark"] body.holi-stpat #kiosk{background:#0c2617}
+@media (prefers-reduced-motion:reduce){#holiFx *{animation:none!important}}
+/* time off: month calendar and week report */
+.tofhead h3{margin:2px 0 2px;font:700 18px "Barlow Semi Condensed",Inter,sans-serif}
+.tofhead p{margin:0 0 8px}
+.tofcal{width:100%;min-width:760px;border-collapse:collapse;table-layout:fixed}
+.tofcal th{font:600 12px Inter,sans-serif;color:var(--ink-2);text-align:left;padding:4px 6px;border:1px solid var(--line);background:var(--field)}
+.tofcal td{vertical-align:top;border:1px solid var(--line);height:92px;padding:4px 5px;font-size:12px}
+.tofcal td.out{background:var(--field);color:var(--ink-2);opacity:.6}
+.tofcal td.wkend{background:var(--field)}
+.tofcal .dn{font:600 13px "IBM Plex Mono",monospace}
+.tofcal .hol{font-size:11px;color:var(--red);font-weight:600;line-height:1.2}
+.tofcal ul{list-style:none;margin:3px 0 0;padding:0}
+.tofcal li{line-height:1.25;margin:2px 0;padding:1px 4px;border-radius:4px;background:rgba(30,122,70,.12);border-left:3px solid var(--ok)}
+.tofcal li.pend{background:rgba(184,114,12,.12);border-left-color:var(--warn);font-style:italic}
+.tofcal li b{font-weight:600}
+.tofcal li small{color:var(--ink-2);font-size:10.5px}
+.toft td.dd,.toft th.dd{text-align:center;width:44px}
+
 .k-card h3{margin:0;padding:13px 16px;font-size:20px;border-bottom:1px solid var(--line-2)}
 .k-card h3 .mini{font-family:Inter,sans-serif;font-weight:500}
 .k-body{padding:16px}
@@ -543,6 +605,21 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
 </section>
 <section id="v-timeoff" hidden>
   <div class="card"><h2>Time off requests</h2><div class="body"><div id="toOut"></div></div></div>
+  <div class="card" id="tofCard"><h2>Calendar &amp; week report<span class="tag">print the month, or pull one week</span></h2><div class="body">
+    <div class="row">
+      <label class="f">Show<select id="tofView"><option value="month">Month calendar</option><option value="week">Week report</option></select></label>
+      <label class="f" id="tofMonWrap">Month<select id="tofMon"></select></label>
+      <label class="f" id="tofWkWrap" hidden>Week<select id="tofWk"></select></label>
+      <label class="f">Requests<select id="tofStat"><option value="both">Approved and pending</option><option value="approved">Approved only</option></select></label>
+      <label class="f">Crew<select id="tofCrew"><option value="all">Day and night</option><option value="day">Day crew</option><option value="night">Night crew</option></select></label>
+      <label class="f">Foreman<select id="tofFm"></select></label>
+      <div class="spacer"></div>
+      <button class="b ghost" id="tofPrint">Print</button>
+      <button class="b red" id="tofGo" hidden>Download week report</button>
+    </div>
+    <p class="hint">Denied requests are left off. Pending ones show in italics with a dashed edge, so the printout says which are not approved yet. Company holidays are marked on the calendar.</p>
+    <div id="tofOut"></div>
+  </div></div>
   <div class="card"><h2>Reminders</h2><div class="body">
     <div id="remOut"></div>
     <div class="row" style="margin-top:10px">
@@ -709,6 +786,12 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
       </select></label>
       <button class="b ghost sm" id="mealApply">Apply to this week's punches</button>
     </div>
+    <div class="row" style="margin-top:10px">
+      <label class="jact"><input type="checkbox" id="holiFxOn" checked> Holiday touches on the keypad</label>
+      <label class="f">Preview<select id="holiPrev"><option value="">Pick a holiday</option><option value="valentine">Valentine's Day: hearts</option><option value="stpat">St. Patrick's Day: green, shamrocks</option><option value="easter">Easter week: eggs and a bunny</option><option value="july4">Fourth of July week: fireworks</option><option value="halloween">Halloween week: ghosts, webs, pumpkins</option><option value="thanksgiving">Thanksgiving week: a turkey</option><option value="christmas">Christmas week: snow</option><option value="newyear">New Year's Eve week: ball drop and fireworks</option></select></label>
+      <button class="b ghost sm" id="holiShow">Show it on the keypad for a minute</button>
+    </div>
+    <p class="hint">Thanksgiving, Fourth of July, Halloween, Christmas and New Year's Eve: the whole week (Monday to Sunday, New Year's Day included). Easter: Monday to Easter Sunday. Valentine's Day and St. Patrick's Day: the day itself. They sit behind the keypad and never cover a button; an iPad set to reduce motion gets them standing still.</p>
     <div class="row" style="margin-top:10px">
       <label class="f">Job-site check at clock-in<select id="geoMode">
         <option value="block">Only on site (geofence)</option><option value="flag">Allow, but flag off-site</option><option value="off">Off</option>
@@ -3016,6 +3099,93 @@ function sheetData(list){
   }).filter(s=>s.blocks.length);
 }
 
+/* ---------------------------------------------------------------- holiday touches on the clock-in screen
+   A layer behind the keypad card (pointer-events off), drawn when the keypad opens and checked every few minutes.
+   Weeks run Monday to Sunday, like the pay week. */
+const HOLI = {on:undefined, preview:null, timer:null};
+function easterSunday(y){                                 // the Gregorian computus
+  const a=y%19, b=Math.floor(y/100), c=y%100, d=Math.floor(b/4), e=b%4, f=Math.floor((b+8)/25), g=Math.floor((b-f+1)/3),
+        h=(19*a+b-d-g+15)%30, i=Math.floor(c/4), k=c%4, l=(32+2*e+2*i-h-k)%7, m=Math.floor((a+11*h+22*l)/451),
+        mo=Math.floor((h+l-7*m+114)/31), da=((h+l-7*m+114)%31)+1;
+  return y+"-"+String(mo).padStart(2,"0")+"-"+String(da).padStart(2,"0");
+}
+function holidayTheme(date){
+  const y = +date.slice(0,4), md = date.slice(5), wk = d => { const a = D.add(d, -D.dow(d)); return [a, D.add(a, 6)]; };
+  const inW = d => { const [a,b] = wk(d); return date>=a && date<=b; };
+  if(md==="02-14") return "valentine";
+  if(md==="03-17") return "stpat";
+  const es = easterSunday(y); if(date>=D.add(es,-6) && date<=es) return "easter";
+  if(inW(y+"-07-04")) return "july4";
+  if(inW(y+"-10-31")) return "halloween";
+  if(inW(nthDow(y,10,4,4))) return "thanksgiving";
+  if((date>y+"-12-25" && inW(y+"-12-31")) || inW((y-1)+"-12-31") || md==="01-01") return "newyear";   // after Christmas Day, through New Year's Day
+  if(inW(y+"-12-24") || md==="12-25") return "christmas";                    // the week of Christmas Eve, and Christmas Day
+  return null;
+}
+const hr = (a,b,dp) => (a+Math.random()*(b-a)).toFixed(dp==null?1:dp);
+const hpick = arr => arr[Math.floor(Math.random()*arr.length)];
+const hside = () => Math.random()<.5 ? hr(2,16) : hr(84,97);          // beside the keypad card
+function hfFall(n, chars, cls){
+  return Array.from({length:n},()=>'<span class="hf-fall '+(cls||"")+'" style="left:'+hr(0,100)+'%;font-size:'+hr(13,28,0)+'px;--dx:'+hr(-40,40,0)+
+    'px;--rot:'+hr(-220,220,0)+'deg;animation-duration:'+hr(9,19)+'s;animation-delay:-'+hr(0,19)+'s">'+hpick(chars)+"</span>").join("");
+}
+function hfRise(n, chars){
+  return Array.from({length:n},()=>'<span class="hf-rise" style="left:'+hr(0,100)+'%;font-size:'+hr(16,30,0)+'px;--dx:'+hr(-50,50,0)+
+    'px;animation-duration:'+hr(10,18)+'s;animation-delay:-'+hr(0,18)+'s">'+hpick(chars)+"</span>").join("");
+}
+function hfBursts(n, colors){
+  return Array.from({length:n},()=>{
+    const t=hr(2.6,4.4), d=hr(0,4), r=hr(60,110,0), c=hpick(colors);
+    return '<div class="hf-fw" style="left:'+hside()+'%;top:'+hr(14,62)+'%">'+Array.from({length:20},(_,k)=>
+      '<i style="--a:'+(k*360/20).toFixed(1)+'deg;--r:'+r+'px;--t:'+t+'s;--d:'+d+'s;--c:'+(k%3===2?hpick(colors):c)+'"></i>').join("")+"</div>";
+  }).join("");
+}
+function hfEgg(i){
+  const P="M20 1C9 1 2 19 2 32c0 11 8 19 18 19s18-8 18-19C38 19 31 1 20 1z", id="hfe"+i+"_"+Math.floor(Math.random()*1e6);
+  const fill=hpick(["#f7b7d2","#b8e0f6","#c9f0c1","#fff1a8","#d9c8f5","#ffd1a8"]), band=hpick(["#ffffff","#e05a8a","#4a90d9","#5cb85c","#f0a500","#8e6cc9"]);
+  return '<svg viewBox="0 0 40 52" width="'+hr(24,36,0)+'" style="'+(i%2?"right":"left")+':'+hr(1,15)+'%;bottom:'+hr(6,18,0)+'px;transform:rotate('+hr(-14,14,0)+'deg)">'+
+    '<defs><clipPath id="'+id+'"><path d="'+P+'"/></clipPath></defs><path d="'+P+'" fill="'+fill+'"/><g clip-path="url(#'+id+')">'+
+    '<path d="M0 20l5-5 5 5 5-5 5 5 5-5 5 5 5-5 5 5" stroke="'+band+'" stroke-width="3" fill="none"/><rect y="30" width="40" height="5" fill="'+band+'"/>'+
+    '<circle cx="12" cy="42" r="2.5" fill="'+band+'"/><circle cx="22" cy="45" r="2.5" fill="'+band+'"/><circle cx="31" cy="41" r="2.5" fill="'+band+'"/></g>'+
+    '<path d="'+P+'" fill="none" stroke="rgba(0,0,0,.18)"/></svg>';
+}
+function hfWeb(right){
+  const th=[0,15,30,45,60,75,90], pt=(r,a)=>(r*Math.cos(a*Math.PI/180)).toFixed(1)+" "+(r*Math.sin(a*Math.PI/180)).toFixed(1);
+  let d=th.map(a=>"M0 0L"+pt(118,a)).join("");
+  [24,46,68,90,110].forEach(r=>{ d+="M"+pt(r,th[0]); th.slice(1).forEach(a=>{ d+="L"+pt(r,a); }); });
+  return '<svg viewBox="0 0 120 120" width="130" height="130" style="top:62px;'+(right?"right:0;transform:scaleX(-1)":"left:0")+'"><path d="'+d+'" fill="none" stroke="currentColor" stroke-width="1" opacity=".6"/></svg>';
+}
+const HOLI_FX = {
+  valentine:   ()=> hfRise(16, ["❤️","💕","💖","💗"]),
+  stpat:       ()=> hfFall(22, ["☘️","☘️","☘️","🍀"]),
+  easter:      ()=> Array.from({length:12},(_,i)=>hfEgg(i)).join("")+'<div class="hf-walk hop" style="--t:22s"><span style="font-size:40px">🐇</span></div>',
+  july4:       ()=> hfBursts(8, ["#e63946","#2f6fde","#f2b705","#9aa8b8"]),
+  halloween:   ()=> hfWeb(false)+hfWeb(true)+
+                    '<div class="hf-bob" style="right:70px;top:62px;--h:26px;--t:3.4s"><div style="position:relative;left:10px;width:1px;height:64px;background:currentColor;opacity:.6"></div><span style="position:relative;font-size:22px">🕷️</span></div>'+
+                    ['3','62'].map((x,i)=>'<div class="hf-float" style="left:'+(i?hr(78,86):hr(1,6))+'%;top:'+hr(22,55)+'%;--t:'+hr(13,19)+'s"><span class="hf-bob" style="position:relative;font-size:'+hr(36,48,0)+'px;opacity:.9;--h:14px;--t:2.4s">👻</span></div>').join("")+
+                    [1,2,3].map(()=>'<span style="left:'+hr(1,13)+'%;bottom:'+hr(4,14,0)+'px;font-size:'+hr(26,40,0)+'px">🎃</span><span style="right:'+hr(1,13)+'%;bottom:'+hr(4,14,0)+'px;font-size:'+hr(26,40,0)+'px">🎃</span>').join(""),
+  thanksgiving:()=> hfFall(10, ["🍂","🍁"])+'<div class="hf-walk" style="--t:28s"><span style="font-size:44px">🦃</span></div>',
+  christmas:   ()=> hfFall(36, ["❄︎","❅","❆"], "hf-snow"),
+  newyear:     ()=> { const d=D.iso(new Date()), yr=+d.slice(0,4)+(d.slice(5,7)==="12"?1:0);
+                      return '<div style="left:7%;top:12vh;width:3px;height:50vh;background:linear-gradient(#cfd6de,#8c97a3);border-radius:2px"></div>'+
+                        '<div class="hf-ball" style="left:calc(7% - 15px);top:calc(12vh - 17px);--fall:50vh"></div>'+
+                        '<div class="hf-ny" style="left:calc(7% - 52px);top:calc(62vh + 24px);width:108px;text-align:center;font:700 15px/1.15 \'Barlow Semi Condensed\',sans-serif;color:#c58b00">Happy New Year<br><b style="font-size:28px">'+yr+'</b></div>'+
+                        hfBursts(5, ["#f2b705","#9aa8b8","#ff5fa2","#3fb0ff"]); }
+};
+function paintHoliday(){
+  const host=$("kiosk"); if(!host) return;
+  const key = HOLI.preview || (db.settings.holidayFx===false ? null : holidayTheme(D.iso(new Date())));
+  if(HOLI.on===key && (!key || $("holiFx"))) return;
+  HOLI.on = key;
+  const old=$("holiFx"); if(old) old.remove();
+  [...document.body.classList].forEach(c=>{ if(c.startsWith("holi-")) document.body.classList.remove(c); });
+  if(!key || !HOLI_FX[key]) return;
+  document.body.classList.add("holi-"+key);
+  const fx=document.createElement("div"); fx.id="holiFx"; fx.setAttribute("aria-hidden","true"); fx.innerHTML=HOLI_FX[key]();
+  host.insertBefore(fx, host.firstChild);
+}
+setInterval(()=>{ try{ paintHoliday(); }catch(e){} }, 5*60000);
+
 /* ---------------------------------------------------------------- time off */
 const KINDS = ["Vacation","Personal","Sick","Unpaid"];
 function requestOff(empId, from, to, kind, note){
@@ -3582,6 +3752,7 @@ function renderSettings(){
     $("roundTo").value = String(db.settings.roundTo);
     $("mealMin").value = String(+db.settings.mealMin||0);
     $("mealAfter").value = String(+db.settings.mealAfter||6);
+    $("holiFxOn").checked = db.settings.holidayFx!==false;
     $("pmMin").value = String(paidMealMin()); $("pmAfter").value = String(paidMealAfter());
     $("geoMode").value = db.settings.geoMode || "off";
     $("geoFt").value = String(+db.settings.geoFt||1000);
@@ -3656,6 +3827,13 @@ $("crewPush").onclick = async ()=>{
   catch(e){ say("Push failed: "+esc(e.message)); }
 };
 $("goKiosk").onclick = ()=>{ kiosk(true); };
+$("holiFxOn").onchange = e=>{ db.settings.holidayFx = e.target.checked; save(); HOLI.on = undefined; paintHoliday(); };
+$("holiShow").onclick = ()=>{
+  const k=$("holiPrev").value; if(!k) return tell("Pick a holiday to preview.");
+  HOLI.preview=k; HOLI.on=undefined; clearTimeout(HOLI.timer);
+  HOLI.timer=setTimeout(()=>{ HOLI.preview=null; HOLI.on=undefined; paintHoliday(); }, 60000);
+  kiosk(true);
+};
 $("signOut").onclick = ()=>{ kiosk(true); };
 $("admPin").onchange = e=>{ db.settings.adminPin = e.target.value.trim()||"0000"; save(); renderSettings(); };
 $("roundTo").onchange = e=>{ db.settings.roundTo = +e.target.value; save(); };
@@ -4667,7 +4845,7 @@ function kiosk(on){
   db.kiosk = !!on; save();
   $("kiosk").hidden = !on;
   document.querySelectorAll("header.top,nav,main").forEach(el=>el.hidden = !!on);
-  if(on){ ME = null; K = {screen:"pin", pin:"", empId:null, msg:"", calMon:null, selA:null, selB:null, kind:"Vacation", note:""}; drawK(); }
+  if(on){ ME = null; K = {screen:"pin", pin:"", empId:null, msg:"", calMon:null, selA:null, selB:null, kind:"Vacation", note:""}; drawK(); try{ paintHoliday(); }catch(e){} }
 }
 function enterOffice(e){
   ME = {id:e.id, name:e.name, role:e.role};
@@ -5189,6 +5367,7 @@ function drawTimeoff(){
     if(!await ask("Delete this request?", true)) return;
     removeRec("timeoff", el.dataset.tdel); save(); renderTimeoff(); refreshBadge();
   });
+  try{ renderTofCal(); }catch(e){ console.error("time off calendar", e); }
   $("remLeads").value = db.settings.remLeads;
   $("remMails").value = db.settings.remMails||"";
   const due = dueItems();
@@ -5204,6 +5383,98 @@ function drawTimeoff(){
     (r.ack = r.ack||[]).push(el.dataset.ackk); save(); renderTimeoff(); refreshBadge();
   });
 }
+/* ---------------------------------------------------------------- time off: month calendar and week report */
+function tofRequests(from, to){                           // requests touching [from, to] that this login can see, filtered
+  const stat=$("tofStat").value, crew=$("tofCrew").value, fm=$("tofFm").value;
+  return (db.timeoff||[]).filter(r=>r && r.from && r.to && r.status!=="denied" && (stat!=="approved" || r.status==="approved") && r.from<=to && r.to>=from && canSeeEmp(r.empId))
+    .map(r=>({r, e:emp(r.empId)||{name:"?"}, lead:leadOf(r.empId)}))
+    .filter(x=>(crew==="all" || (crew==="night" ? x.e.crew==="night" : x.e.crew!=="night")) && (!fm || (fm==="_none" ? !x.lead : (x.lead||{}).id===fm)));
+}
+function tofFill(){
+  const today=D.iso(new Date()), mons=new Set(), wks=new Set(), we=D.weekEnd(today);
+  for(let i=-6;i<=12;i++){ const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()+i); mons.add(D.iso(d).slice(0,7)); }
+  for(let i=-8;i<=12;i++) wks.add(D.add(we, i*7));
+  (db.timeoff||[]).forEach(r=>{ if(!r || !r.from || !r.to) return; mons.add(r.from.slice(0,7)); mons.add(r.to.slice(0,7));
+    for(let d=D.weekEnd(r.from), n=0; d<=D.weekEnd(r.to) && n<60; d=D.add(d,7), n++) wks.add(d); });
+  fillSelect($("tofMon"), [...mons].sort().map(m=>[m, MONTHNAME[+m.slice(5)-1]+" "+m.slice(0,4)]), $("tofMon").value || today.slice(0,7));
+  fillSelect($("tofWk"), [...wks].sort().map(w=>[w, D.us(D.add(w,-6))+" to "+D.us(w)]), $("tofWk").value || we);
+  const leads=[...new Map(visCrew().map(e=>leadOf(e.id)).filter(Boolean).map(l=>[l.id,l])).values()].sort(byName);
+  fillSelect($("tofFm"), [["","All foremen"]].concat(leads.map(l=>[l.id, l.name+(l.role==="super"?" (GF / super)":"")])).concat([["_none","No foreman set"]]), $("tofFm").value);
+}
+function tofNote(){
+  const bits=[$("tofStat").value==="approved" ? "Approved only" : "Approved and pending"];
+  if($("tofCrew").value!=="all") bits.push($("tofCrew").value==="night" ? "night crew" : "day crew");
+  if($("tofFm").value) bits.push($("tofFm").value==="_none" ? "no foreman set" : "under "+((emp($("tofFm").value)||{}).name||""));
+  return bits.join(", ")+". As of "+D.us(D.iso(new Date()))+".";
+}
+const tofLead = x => x.lead ? x.lead.name : (x.e.role==="super" ? "Supervision" : "Not set");
+function tofMonthHtml(mon){
+  const y=+mon.slice(0,4), m=+mon.slice(5,7), first=mon+"-01", last=D.iso(new Date(y,m,0));
+  const start=D.add(first,-D.parse(first).getDay()), end=D.add(last,6-D.parse(last).getDay());   // Sunday to Saturday
+  const list=tofRequests(first,last), byDay={};
+  list.forEach(x=>{ for(let d=(x.r.from<first?first:x.r.from), to=(x.r.to>last?last:x.r.to); d<=to; d=D.add(d,1)) (byDay[d]=byDay[d]||[]).push(x); });
+  Object.values(byDay).forEach(a=>a.sort((p,q)=>ABC(lastFirst(p.e.name),lastFirst(q.e.name))));
+  const people=new Set(list.map(x=>x.r.empId)).size, days=Object.values(byDay).reduce((s,a)=>s+a.length,0), pend=list.filter(x=>x.r.status!=="approved").length;
+  let rows="";
+  for(let w=start; w<=end; w=D.add(w,7)) rows += "<tr>"+[0,1,2,3,4,5,6].map(i=>{
+    const day=D.add(w,i), inM=day.slice(0,7)===mon, hol=inM && holidayOn(day), a=inM ? (byDay[day]||[]) : [];
+    return '<td class="'+(inM?"":"out")+((i===0||i===6)&&inM?" wkend":"")+'"><div class="dn">'+(+day.slice(8))+"</div>"+(hol?'<div class="hol">'+esc(hol)+"</div>":"")+
+      (a.length ? "<ul>"+a.map(x=>'<li class="'+(x.r.status==="approved"?"":"pend")+'"><b>'+esc(x.e.name||"?")+"</b> <small>"+esc(x.r.kind||"Off")+(x.r.status==="approved"?"":", pending")+"</small></li>").join("")+"</ul>" : "")+"</td>";
+  }).join("")+"</tr>";
+  return '<div class="tofhead"><h3>Time off: '+MONTHNAME[m-1]+" "+y+'</h3><p class="mini">'+people+" "+(people===1?"person":"people")+", "+days+" day"+(days===1?"":"s")+" off"+
+    (pend ? ", "+pend+" request"+(pend===1?"":"s")+" still pending (in italics)" : "")+". "+tofNote()+"</p></div>"+
+    '<table class="tofcal"><thead><tr>'+["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"].map(d=>"<th>"+d+"</th>").join("")+"</tr></thead><tbody>"+rows+"</tbody></table>";
+}
+function tofWeekData(we){
+  const mon=D.add(we,-6), days=[0,1,2,3,4,5,6].map(i=>D.add(mon,i));
+  const rows=tofRequests(mon,we).sort((p,q)=>ABC(lastFirst(p.e.name),lastFirst(q.e.name)) || p.r.from.localeCompare(q.r.from))
+    .map(x=>{ const on=days.map(d=>d>=x.r.from && d<=x.r.to); return {x, on, n:on.filter(Boolean).length}; });
+  return {mon, we, days, rows, hols:days.map(d=>[d, holidayOn(d)]).filter(h=>h[1])};
+}
+function tofWeekSummary(W){
+  const people=new Set(W.rows.map(r=>r.x.r.empId)).size, n=W.rows.reduce((s,r)=>s+r.n,0);
+  return people+" "+(people===1?"person":"people")+", "+n+" day"+(n===1?"":"s")+" off"+(W.hols.length ? ". Holiday: "+W.hols.map(h=>h[1]+" ("+DAYNAME[D.dow(h[0])].slice(0,3)+")").join(", ") : "")+". "+tofNote();
+}
+function tofWeekHtml(we){
+  const W=tofWeekData(we);
+  const head='<div class="tofhead"><h3>Time off: week of '+DAYNAME[0]+" "+D.us(W.mon)+" to "+DAYNAME[6]+" "+D.us(W.we)+'</h3><p class="mini">'+esc(tofWeekSummary(W))+"</p></div>";
+  if(!W.rows.length) return head+'<div class="flag good">Nobody has time off this week.</div>';
+  return head+'<table class="abst toft"><thead><tr><th>#</th><th>Employee</th><th>No.</th><th>Classification</th><th>Foreman</th><th>Type</th><th>Dates</th>'+
+    W.days.map(d=>'<th class="dd">'+DAYNAME[D.dow(d)].slice(0,3)+"<br>"+D.short(d)+"</th>").join("")+"<th>Days</th><th>Status</th><th>Note</th></tr></thead><tbody>"+
+    W.rows.map((r,i)=>{ const x=r.x, e=x.e;
+      return '<tr><td class="idx">'+(i+1)+'</td><td class="who" data-l="Employee">'+esc(e.name||"?")+'</td><td class="no" data-l="No.">'+esc(e.pin||"")+'</td><td data-l="Classification">'+esc(e.cls||"")+
+        '</td><td data-l="Foreman">'+(x.lead?esc(x.lead.name):'<span class="mini">'+tofLead(x)+"</span>")+'</td><td data-l="Type">'+esc(x.r.kind||"Off")+'</td><td class="no" data-l="Dates">'+D.short(x.r.from)+(x.r.to!==x.r.from?"–"+D.short(x.r.to):"")+"</td>"+
+        r.on.map((b,k)=>'<td class="dd" data-l="'+DAYNAME[k].slice(0,3)+'">'+(b?"✓":"")+"</td>").join("")+'<td class="n" data-l="Days">'+r.n+'</td><td data-l="Status"><span class="chip '+(x.r.status==="approved"?"appr":"pend")+'">'+esc(x.r.status)+'</span></td><td data-l="Note">'+esc(x.r.note||"")+"</td></tr>"; }).join("")+"</tbody></table>";
+}
+function renderTofCal(){
+  const out=$("tofOut"); if(!out) return;
+  tofFill();
+  const week=$("tofView").value==="week";
+  $("tofMonWrap").hidden=week; $("tofWkWrap").hidden=!week; $("tofGo").hidden=!week;
+  out.innerHTML = week ? tofWeekHtml($("tofWk").value) : tofMonthHtml($("tofMon").value);
+}
+["tofView","tofMon","tofWk","tofStat","tofCrew","tofFm"].forEach(id=>$(id).onchange = renderTofCal);
+$("tofPrint").onclick = ()=>{
+  renderTofCal();
+  const st=document.createElement("style"); st.textContent="@page{size:landscape;margin:0.35in}"; document.head.appendChild(st);
+  document.body.classList.add("ptof");
+  const done=()=>{ document.body.classList.remove("ptof"); st.remove(); window.removeEventListener("afterprint", done); };
+  window.addEventListener("afterprint", done); setTimeout(done, 60000);
+  try{ window.print(); }catch(e){ done(); tell("This device would not print."); }
+};
+$("tofGo").onclick = async ()=>{
+  const W=tofWeekData($("tofWk").value), B=v=>({v, bold:true});
+  const rows=[[B("ADMAN ELECTRIC, INC.: Time off, week of "+DAYNAME[0]+" "+D.us(W.mon)+" to "+DAYNAME[6]+" "+D.us(W.we))],
+    [tofWeekSummary(W)+(ME&&ME.name ? " Pulled by "+ME.name+"." : "")], [],
+    [B("Employee"),B("Employee No."),B("Classification"),B("Foreman"),B("Type"),B("From"),B("To")].concat(W.days.map(d=>B(DAYNAME[D.dow(d)].slice(0,3)+" "+D.short(d)))).concat([B("Days this week"),B("Status"),B("Note")])];
+  W.rows.forEach(r=>{ const x=r.x; rows.push([x.e.name||"?", String(x.e.pin||""), x.e.cls||"", tofLead(x), x.r.kind||"Off", D.us(x.r.from), D.us(x.r.to)].concat(r.on.map(b=>b?"Off":"")).concat([r.n, x.r.status, x.r.note||""])); });
+  if(!W.rows.length) rows.push(["Nobody has time off this week."]);
+  try{
+    const zip = await AdmanExport.buildWeekly(TPL_WEEK, [], [{name:"Time off", rows, widths:[24,12,15,20,10,11,11,8,8,8,8,8,8,8,9,10,34], landscape:true}], JSZip);
+    const blob = await zip.generateAsync({type:"blob", mimeType:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+    dl(blob, safe("Adman Time Off - week ending "+D.us(W.we))+".xlsx");
+  }catch(err){ tell("Could not build the file: "+err.message); }
+};
 $("remLeads").onchange = e=>{ db.settings.remLeads = e.target.value; save(); renderTimeoff(); refreshBadge(); };
 $("remMails").onchange = e=>{ db.settings.remMails = e.target.value; save(); };
 setInterval(refreshBadge, 60000);
@@ -5218,7 +5489,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
 const APP_VERSION = "v54";
-const APP_BUILD = 59;                     /* what the update check compares (sw.js CACHE "adman-field-v59"); the label above can stay put */
+const APP_BUILD = 60;                     /* what the update check compares (sw.js CACHE "adman-field-v60"); the label above can stay put */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
