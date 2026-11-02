@@ -465,6 +465,7 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
         </span>
         <label class="f">Shift<select id="dShift"><option value="day">Day</option><option value="night">Night</option><option value="both">Both: day, then night</option></select></label>
         <label class="f" style="flex:1 1 200px">Find<input type="search" id="dQ" list="qList" placeholder="Name or number" autocomplete="off"></label>
+        <label class="jact moneyTog" hidden title="Labor cost, material prices and billing on this screen. Off each time you sign in."><input type="checkbox" class="moneyChk"> Show money</label>
         <div class="spacer"></div>
         <button class="b" id="addForm">Add job form</button>
       </div>
@@ -493,6 +494,7 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
         <label class="f">Shift<select id="wShift"><option value="day">Day</option><option value="night">Night</option><option value="both">Both: day, then night</option></select></label>
         <label class="f">Project manager<select id="wPm"></select></label>
         <label class="f" style="flex:1 1 200px">Find<input type="search" id="wQ" list="qList" placeholder="Name or number" autocomplete="off"></label>
+        <label class="jact moneyTog" hidden title="Labor cost, material prices and billing on this screen. Off each time you sign in."><input type="checkbox" class="moneyChk"> Show money</label>
         <div class="spacer"></div>
         <label class="f">Add a job to this week<select id="wAddJob"></select></label>
       </div>
@@ -575,6 +577,7 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
         </span>
         <label class="f" id="tcProjWrap" hidden>Project<select id="tcProj"></select></label>
         <label class="f" style="flex:1 1 180px;max-width:260px">Find<input type="search" id="tcQ" placeholder="Name or number" autocomplete="off"></label>
+        <label class="jact moneyTog" hidden title="Labor cost, material prices and billing on this screen. Off each time you sign in."><input type="checkbox" class="moneyChk"> Show money</label>
         <div class="spacer"></div>
         <button class="b" id="tcAdd">Add a punch by hand</button>
       </div>
@@ -1961,6 +1964,14 @@ function sumTotals(list){
 /* ---------------------------------------------------------------- who is signed in */
 let ME = null;                                             // {id,name,role}
 const money$   = () => !!ME && (ME.role==="pm" || ME.role==="admin");          // office admin sees no rates, pay or billing
+/* PMs and admins can see money; on the Daily, Weekly and Digital Timesheet it stays hidden until they switch it on.
+   Every sign-in starts with it off. Reports and the Excel downloads are not affected. */
+let SHOW$ = false;
+const show$ = () => money$() && SHOW$;
+function setShow$(on){
+  SHOW$ = !!on && money$();
+  document.querySelectorAll(".moneyChk").forEach(c=>{ c.checked = SHOW$; });
+}
 const canRates = () => money$();                          // PMs and admins set cost rates
 const canRoles = () => !!ME && (ME.role==="admin" || ME.role==="office");
 const canEarly = () => !!ME && (ME.role==="admin" || ME.role==="pm");    // who may set "paid from his real clock-in"
@@ -1976,6 +1987,7 @@ const TABS = {
   admin: ["daily","weekly","crew","jobs","clock","timeoff","safety","reports","export","settings"]
 };
 function applyRole(){
+  document.querySelectorAll(".moneyTog").forEach(el=>{ el.hidden = !money$(); });
   const allowed = TABS[(ME&&ME.role)||"super"] || TABS.super;
   document.querySelectorAll("nav button").forEach(b=>{ b.hidden = !allowed.includes(b.dataset.v); });
   const cur = document.querySelector('nav button[aria-current="true"]');
@@ -2291,7 +2303,7 @@ function renderDaily(){
       renderDaily();
     };
   }
-  $("dayTot").innerHTML = totalStrip(sumTotals(forms.map(formTotals)));
+  $("dayTot").innerHTML = totalStrip(sumTotals(forms.map(formTotals)), show$());
 
   const host = $("forms");
   if(!forms.length){
@@ -2338,10 +2350,11 @@ function renderFlags(){
   $("dayFlags").innerHTML = flags.map(f=>'<div class="flag '+f[1]+'">'+f[0]+"</div>").join("");
 }
 
-function totalStrip(t){
+function totalStrip(t, $$){
+  if($$ === undefined) $$ = money$();
   let h = '<div><b>HOURS</b><span class="num">'+hrs(t.hours)+'</span></div>'+
           '<div><b>RT / OT / DT</b><span class="num" style="font-size:15px">'+hrs(t.rt)+" / "+hrs(t.ot)+" / "+hrs(t.dt)+'</span></div>';
-  if(money$()) h +=
+  if($$) h +=
           '<div><b>LABOR</b><span class="num">'+money(t.cost)+'</span></div>'+
           '<div><b>MATERIAL</b><span class="num">'+money(t.matCost)+'</span></div>'+
           '<div><b>OVERHEAD</b><span class="num">'+money(t.ohAmt)+'</span></div>'+
@@ -2353,7 +2366,7 @@ function totalStrip(t){
 function formHTML(f,i){
   const t = formTotals(f);
   const j = job(f.jobId); const p = pmOf(f.jobId);
-  const $$ = money$();
+  const $$ = show$();
   const jobOpts = jobOptHTML(visJobs().filter(x=>x.active!==false || x.id===f.jobId), f.jobId, "Pick a job");
   const empOpts = e => ['<option value="">Pick a man</option>'].concat(
     crewOnly().filter(x=>(x.active!==false && canSeeEmp(x.id)) || x.id===e).sort(byName).map(x=>'<option value="'+x.id+'"'+(x.id===e?" selected":"")+">"+esc(x.name)+(x.crew==="night"?" (N)":"")+"</option>")).join("");
@@ -2492,7 +2505,7 @@ function findForm(fid){ return (WORK && WORK.date===curDate ? WORK : dayRec(curD
 /* recompute the numbers without touching the inputs, so focus and tab order survive */
 function refreshCalcs(){
   const forms = dayFormsView(curDate, curShift);
-  $("dayTot").innerHTML = totalStrip(sumTotals(forms.map(formTotals)));
+  $("dayTot").innerHTML = totalStrip(sumTotals(forms.map(formTotals)), show$());
   if(curShift==="both") ["day","night"].forEach(sh=>{ const el=document.querySelector('#forms [data-calc="bandhrs"][data-sh="'+sh+'"]'); if(el) el.textContent = hrs(sumTotals(forms.filter(f=>okShift(f.shift)===sh).map(formTotals)).hours); });
   forms.forEach(f=>{
     const t = formTotals(f), j = job(f.jobId), p = pmOf(f.jobId);
@@ -2500,7 +2513,7 @@ function refreshCalcs(){
     const set = (k,v,extra="") => { const el=q(k,extra); if(el) el.textContent=v; };
     set("title", j ? j.po+" · "+j.name : "No job selected");
     set("pmname", p ? "PM: "+p.name : "");
-    set("headsum", hrs(t.hours)+" hr"+(money$()?" · "+money(t.billed)+" billed":""));
+    set("headsum", hrs(t.hours)+" hr"+(show$()?" · "+money(t.billed)+" billed":""));
     f.crew.forEach((c,k)=>{
       const e = emp(c.empId), r = lineRate(e, j, f.shift), s = db.settings;
       set("rowhrs", hrs((+c.rt||0)+(+c.ot||0)+(+c.dt||0)), '[data-k="'+k+'"]');
@@ -2586,7 +2599,7 @@ function renderWeekly(){
   const days = Array.from({length:7},(_,i)=>D.add(wkEnd,i-6));
   const secs = wkShift==="both" ? ["day","night"] : [wkShift];
   const allRecs = collect(d=>days.includes(d)).filter(r=>secs.includes(okShift(r.form.shift)) && (!wkPm || r.pm.id===wkPm));
-  $("weekTot").innerHTML = totalStrip(sumTotals(allRecs.map(r=>r.t)));
+  $("weekTot").innerHTML = totalStrip(sumTotals(allRecs.map(r=>r.t)), show$());
   let html = "", any = false;
   secs.forEach(sh=>{
     wkSec = sh;
@@ -2618,7 +2631,7 @@ function cellLine(date, jobId, empId){
 }
 const cellLines = (date, jobId, empId) => { const f = dayForm(date, jobId); return f ? f.crew.filter(c=>c.empId===empId) : []; };
 function weekBlock(j, days){
-  const $$ = money$(), p = pm(j.pmId);
+  const $$ = show$(), p = pm(j.pmId);
   const forms = days.map(d=>dayForm(d, j.id));
   const empIds = new Set();
   forms.forEach(f=>{ if(f) f.crew.forEach(c=>{ if(c.empId) empIds.add(c.empId); }); });
@@ -3428,6 +3441,11 @@ function applyWeeklyFind(){
   const c=$("wQclr"); if(c) c.onclick=()=>{ $("wQ").value=""; applyWeeklyFind(); };
 }
 $("dQ").oninput = applyDailyFind; $("wQ").oninput = applyWeeklyFind;
+document.querySelectorAll(".moneyChk").forEach(c=>c.onchange = ()=>{
+  setShow$(c.checked);
+  const cur = (document.querySelector('nav button[aria-current="true"]')||{}).dataset||{};
+  if(cur.v==="daily") renderDaily(); else if(cur.v==="weekly") renderWeekly(); else if(cur.v==="clock") renderClock();
+});
 let REPORT = {list:[], title:""};
 /* ---------------------------------------------------------------- absentee list
    Everyone on the crew list (employees and foremen, and supers/GFs if ticked) who is NOT on the clock at the moment
@@ -4845,10 +4863,11 @@ function kiosk(on){
   db.kiosk = !!on; save();
   $("kiosk").hidden = !on;
   document.querySelectorAll("header.top,nav,main").forEach(el=>el.hidden = !!on);
-  if(on){ ME = null; K = {screen:"pin", pin:"", empId:null, msg:"", calMon:null, selA:null, selB:null, kind:"Vacation", note:""}; drawK(); try{ paintHoliday(); }catch(e){} }
+  if(on){ ME = null; setShow$(false); K = {screen:"pin", pin:"", empId:null, msg:"", calMon:null, selA:null, selB:null, kind:"Vacation", note:""}; drawK(); try{ paintHoliday(); }catch(e){} }
 }
 function enterOffice(e){
   ME = {id:e.id, name:e.name, role:e.role};
+  setShow$(false);
   kiosk(false); applyRole(); renderDaily(); refreshBadge(); stamp();
 }
 function kIdle(){
@@ -5190,7 +5209,7 @@ function fixDoubles(ps){
 }
 function renderClock(){
   TC.hold = false;
-  const $$ = money$();
+  const $$ = show$();
   const tcFl = projList(visJobs());
   $("tcProjWrap").hidden = !tcFl.length; if(tcProj && !tcFl.includes(tcProj.slice(5))) tcProj = "";
   fillSelect($("tcProj"), [["","All projects"]].concat(tcFl.map(f=>["proj:"+f, f])), tcProj);
@@ -5489,7 +5508,7 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
 const APP_VERSION = "v54";
-const APP_BUILD = 60;                     /* what the update check compares (sw.js CACHE "adman-field-v60"); the label above can stay put */
+const APP_BUILD = 61;                     /* what the update check compares (sw.js CACHE "adman-field-v61"); the label above can stay put */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
