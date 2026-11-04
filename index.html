@@ -758,6 +758,8 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
     <div class="row">
       <label class="f">Usual work week<select id="setSched"><option value="5x8">5 × 8s (Mon–Fri)</option><option value="4x10">4 × 10s (Mon–Thu)</option></select></label>
       <label class="f">Usual start time<input type="time" id="setStart" style="width:130px"></label>
+      <label class="f">Night shift starts<input type="time" id="setNStart" style="width:130px"></label>
+      <label class="f">Night crew may clock in<select id="setNEarly"><option value="60">up to 1 hour early</option><option value="30">up to 30 minutes early</option><option value="90">up to 1½ hours early</option><option value="120">up to 2 hours early</option><option value="0">any time (no limit)</option></select></label>
       <label class="f">RT / OT / DT at clock-out<select id="setAuto"><option value="1">Figured automatically</option><option value="0">All hours to Reg; office moves OT</option></select></label>
       <label class="f">Hours before the start time count as<select id="setEarly"><option value="dt">Double time (agreement)</option><option value="ot">Time and a half</option></select></label>
     </div>
@@ -1784,6 +1786,12 @@ function holidayOn(date){
 }
 const jobSched = j => (j && j.sched) || db.settings.sched || "5x8";
 const jobStart = j => (j && j.start) || db.settings.startTime || "07:00";
+/* Night shift: the same start-time rule as days, later. A night-crew man who clocks in before the night start is paid
+   from the start (supers, GFs and foremen, or anyone the office flags, from the real clock-in). Settings > Night shift
+   starts (6:00 PM), per job on the Jobs tab. The tablet turns away a night clock-in more than nightEarlyMin early. */
+const jobNightStart = j => (j && j.nstart) || db.settings.nightStart || "18:00";
+const nightEarlyMin = () => db.settings.nightEarlyMin == null ? 60 : Math.max(0, +db.settings.nightEarlyMin||0);
+function nightStartIso(p){ const j = job(p.ruleJob) || job(p.jobId); return T.atHM(p.date || T.dateOf(p.tin), jobNightStart(j)); }
 /* Half-hour rule, per job (Jobs tab). When it is on, the day shift pays from the scheduled start however early the
    man clocks in; a clock-out before the grace window rounds DOWN to the half hour; at or inside the grace window
    (3:00 on a 7-3:30 job) he gets the full day; past quitting time both ends round to the NEAREST half hour.
@@ -1856,6 +1864,10 @@ function paidSpan(p){
       }
     }
     if(tout && ms(tout) <= ms(tin)){ tin = near(p.tin); tout = near(p.tout); if(ms(tout) <= ms(tin)){ tin = p.tin; tout = p.tout; } }   // a punch of a few minutes: real times
+  }
+  if(okShift(p.shift)==="night" && !earlyOk(emp(p.empId))){
+    const ns = nightStartIso(p);
+    if(ns && ms(tin) < ms(ns) && (!tout || ms(tout) > ms(ns))) tin = ns;      // in early on nights: pays from the night start
   }
   /* moved from another job: his day is continuous, so this leg picks up where the last leg's paid span ended -
      nothing paid twice inside the grace window, nothing lost at the hand-off */
@@ -2979,8 +2991,16 @@ function rndNote(j){
   if(!q || !st) return "Set a start time first.";
   const g = jobGrace(j), gf = new Date(new Date(q).getTime()-g*60000).toISOString();
   return "Clock-in and clock-out go to the half hour: 1 to 15 minutes past goes back (7:10 is 7:00), 16 to 29 goes up (7:16 is 7:30). "+
-    "Day shift pays from "+T.clock(st)+" however early he clocks in (supers, GFs and foremen from their real clock-in). "+
+    "Day shift pays from "+T.clock(st)+" however early he clocks in (supers, GFs and foremen from their real clock-in). Night shift the same from "+T.clock(T.atHM("2026-01-05", jobNightStart(j)))+". "+
     (g ? "Out at "+T.clock(gf)+" or later pays through "+T.clock(q)+", and the same half hour repeats every hour after (out at "+T.clock(new Date(new Date(gf).getTime()+2*3600000).toISOString())+" pays through "+T.clock(new Date(new Date(q).getTime()+2*3600000).toISOString())+"). " : "")+"Real clock times stay on the Digital Timesheet.";
+}
+async function offerRefigureNight(j){
+  const from = D.add(D.weekEnd(D.iso(new Date())),-6);
+  const ps = db.punches.filter(p=>okShift(p.shift)==="night" && p.tout && p.date>=from && (!j || p.jobId===j.id)).filter(stalePunch);
+  if(!ps.length) return;
+  if(!await ask("Re-figure the "+ps.length+" night-shift punch"+(ps.length===1?"":"es")+" this week"+(j?" on "+j.po:"")+" by the night start time? Lines typed or changed by hand on the dailies stay exactly as they are.")) return;
+  snapshot(true, "before re-figuring night shift");
+  refigure(ps); save(); renderDaily(); tell("Done. "+ps.length+" night punch"+(ps.length===1?"":"es")+" re-figured.");
 }
 async function offerRefigure(j){
   const from = D.add(D.weekEnd(D.iso(new Date())),-6);
@@ -3033,6 +3053,7 @@ function renderJobs(){
              '<button class="b ghost sm" data-jrates="'+j.id+'">PO rates: '+(Object.keys(j.rates||{}).length?Object.keys(j.rates).length+" custom":"defaults")+"</button></div>":"")+
         '<div class="jrow jtime"><label class="f jsel">Work week<select data-j="'+j.id+'" data-p="sched"><option value="">Default: '+(db.settings.sched==="4x10"?"4 × 10s":"5 × 8s")+'</option><option value="5x8"'+(j.sched==="5x8"?" selected":"")+'>5 × 8s (Mon–Fri)</option><option value="4x10"'+(j.sched==="4x10"?" selected":"")+'>4 × 10s (Mon–Thu)</option></select></label>'+
           '<label class="f jnum" style="flex-basis:130px">Start time<input type="time" data-j="'+j.id+'" data-p="start" value="'+esc(j.start||"")+'" placeholder="'+esc(db.settings.startTime||"07:00")+'"></label>'+
+          '<label class="f jnum" style="flex-basis:130px" title="Night crew clocking in before this are paid from it">Night start<input type="time" data-j="'+j.id+'" data-p="nstart" value="'+esc(j.nstart||"")+'" placeholder="'+esc(db.settings.nightStart||"18:00")+'"></label>'+
           '<label class="f jsel">Night shift<select data-j="'+j.id+'" data-p="nightShift"><option value="">Company default</option><option value="swing"'+(j.nightShift==="swing"?" selected":"")+'>Swing (+'+(+db.settings.swingPct||0)+'%)</option><option value="grave"'+(j.nightShift==="grave"?" selected":"")+'>Graveyard (+'+(+db.settings.gravePct||0)+'%)</option><option value="none"'+(j.nightShift==="none"?" selected":"")+'>No premium</option></select></label>'+
           '<span class="mini" style="padding-bottom:10px">Quits at '+(function(){ const st=T.atHM("2026-01-05", jobStart(j)); if(!st) return "?"; const q=new Date(new Date(st).getTime()+((jobSched(j)==="4x10"?10:8)+(+db.settings.mealMin||0)/60)*3600000); return T.clock(q.toISOString()); })()+' · OT until '+(function(){ const st=T.atHM("2026-01-05", jobStart(j)); if(!st) return "?"; const ten=jobSched(j)==="4x10"; const q=new Date(new Date(st).getTime()+((ten?10:8)+(ten?2:4)+(+db.settings.mealMin||0)/60)*3600000); return T.clock(q.toISOString()); })()+', then double time</span></div>'+
         '<div class="jrow jrnd"><label class="jact"><input type="checkbox" data-j="'+j.id+'" data-p="rnd"'+(j.rnd?" checked":"")+'> Start at 7:00, round to the half hour</label>'+
@@ -3055,6 +3076,7 @@ function renderJobs(){
     el.onchange = ev => {
       if(p==="rnd"){ j.rnd = ev.target.checked; if(!j.rnd) delete j.rnd; save(); renderJobs(); offerRefigure(j); return; }
       if(p==="rndGrace"){ j.rndGrace = +ev.target.value||0; save(); renderJobs(); offerRefigure(j); return; }
+      if(p==="nstart"){ j.nstart = /^\d{2}:\d{2}$/.test(ev.target.value) ? ev.target.value : ""; save(); renderJobs(); offerRefigureNight(j); return; }
       if(p==="sched"||p==="start"||p==="nightShift"){ j[p] = ev.target.value; if(p==="start" && j.start && !/^\d{2}:\d{2}$/.test(j.start)) j.start=""; save(); renderJobs(); if(j.rnd) offerRefigure(j); return; }
       if(p==="oh"||p==="profit") j[p] = ev.target.value==="" ? null : (+ev.target.value||0);
       else if(p==="markupOff"){ j.markupOff = ev.target.checked; save(); renderJobs(); return; }
@@ -3852,6 +3874,7 @@ function renderSettings(){
   step("contract", ()=>{
     const s = db.settings;
     $("setSched").value = s.sched||"5x8"; $("setStart").value = s.startTime||"07:00";
+    $("setNStart").value = s.nightStart||"18:00"; $("setNEarly").value = String(s.nightEarlyMin==null?60:+s.nightEarlyMin||0);
     $("setAuto").value = s.autoSplit===false ? "0" : "1"; $("setEarly").value = s.earlyAs||"dt";
     $("setNight").value = s.nightShift||"swing"; $("setSwing").value = hasNum(s.swingPct)?s.swingPct:17.3; $("setGrave").value = hasNum(s.gravePct)?s.gravePct:31.4;
     renderHolidays();
@@ -3931,6 +3954,8 @@ $("geoMode").onchange = e=>{ db.settings.geoMode = e.target.value; save(); };
 $("geoFt").onchange = e=>{ db.settings.geoFt = +e.target.value; save(); };
 $("setSched").onchange = e=>{ db.settings.sched = e.target.value; save(); };
 $("setStart").onchange = e=>{ if(/^\d{2}:\d{2}$/.test(e.target.value)){ db.settings.startTime = e.target.value; save(); } };
+$("setNStart").onchange = e=>{ if(/^\d{2}:\d{2}$/.test(e.target.value)){ db.settings.nightStart = e.target.value; save(); offerRefigureNight(); } };
+$("setNEarly").onchange = e=>{ db.settings.nightEarlyMin = +e.target.value||0; save(); };
 $("setAuto").onchange  = e=>{ db.settings.autoSplit = e.target.value==="1"; save(); };
 $("setEarly").onchange = e=>{ db.settings.earlyAs = e.target.value; save(); };
 $("setNight").onchange = e=>{ db.settings.nightShift = e.target.value; save(); };
@@ -5184,6 +5209,16 @@ function wireK(){
     }
     await fresh;
     K.empId = empId;
+    { const e = emp(empId), lim = nightEarlyMin();
+      if(e && e.crew==="night" && lim > 0 && !K.moving){
+        const nowIso = T.now(), ns = T.atHM(T.dateOf(nowIso), jobNightStart(j));
+        if(ns && ms(nowIso) < ms(ns) - lim*60000){
+          const from = new Date(ms(ns) - lim*60000).toISOString();
+          K.msg = "Too early. Night shift on "+crewJobTitle(j)+" starts at "+T.clock(ns)+"; you can clock in from "+T.clock(from)+". Come back then.";
+          K.screen="done"; drawK(); return;
+        }
+      }
+    }
     let moved = null;
     if(K.moving){ const op = openPunch(K.empId);
       if(op && op.jobId===jid){ K.msg = "You are already on "+crewJobTitle(j)+"."; K.moving=false; K.screen="done"; drawK(); return; }
@@ -5325,7 +5360,7 @@ function renderClock(){
   const long = list.filter(p=>p.tout && (new Date(p.tout)-new Date(p.tin)) > 14*3600000);
   if(long.length) html += '<div class="flag">'+long.length+' punch'+(long.length===1?"":"es")+' over 14 hours (probably a missed clock-out): '+long.map(p=>esc((emp(p.empId)||{}).name||"?")+" "+hrs(p.hours)+" h").join(", ")+". Fix the Out time here.</div>";
   const stale = list.filter(stalePunch);
-  if(stale.length) html += '<div class="flag warn">'+stale.length+' punch'+(stale.length===1?" was":"es were")+' figured under an older rule (meal period, rounding, or a job\'s half-hour rule), so the sheets still carry the old hours. <button class="b sm" id="tcRefig">Re-figure '+(stale.length===1?"it":"them")+'</button></div>';
+  if(stale.length) html += '<div class="flag warn">'+stale.length+' punch'+(stale.length===1?" was":"es were")+' figured under an older rule (meal period, rounding, a job\'s half-hour rule, or the night shift start), so the sheets still carry the old hours. <button class="b sm" id="tcRefig">Re-figure '+(stale.length===1?"it":"them")+'</button></div>';
   const crewKey = id => { const e=emp(id); if(!e) return "~"; if(e.role==="foreman") return e.id; if(OFFICE.includes(e.role)) return "office"; const f=bossOf(id,"foreman"); return f ? f.id : "none"; };
   const crewLabel = k => k==="office" ? "Supervision" : k==="none" ? "No foreman set" : k==="~" ? "Unknown" : ((emp(k)||{}).name||"?")+"'s crew";
   const gmode = (()=>{ let v="foreman"; try{ v=localStorage.getItem("adman_field_tcgroup")||"foreman"; }catch(e){} return v==="0"?"none":v==="1"?"foreman":v; })();
@@ -5609,8 +5644,8 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v65";                /* the label people see: from v63 on it is the same number as the build */
-const APP_BUILD = 65;                     /* what the update check compares (sw.js CACHE "adman-field-v65"); bump both together */
+const APP_VERSION = "v66";                /* the label people see: from v63 on it is the same number as the build */
+const APP_BUILD = 66;                     /* what the update check compares (sw.js CACHE "adman-field-v66"); bump both together */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
