@@ -769,7 +769,7 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
       <label class="f">Graveyard %<input class="num" type="number" step="0.1" min="0" id="setGrave" style="width:90px"></label>
       <button class="b ghost sm" id="otApply">Re-figure this week's RT/OT/DT</button>
     </div>
-    <p class="hint">How the hours fall (Section 3.02a): on a <strong>5 × 8</strong> the first 4 hours after the scheduled quitting time are time and a half; on a <strong>4 × 10</strong> the first 2 hours after quitting are time and a half and the first 12 hours Friday are time and a half. <strong>Saturday</strong>: first 12 hours time and a half. <strong>Sunday and holidays</strong>: all double time. Everything outside those windows: double time. A <strong>night shift</strong> (3.11) is paid at the shift rate for 8 hours, then time and a half. Quitting time is the job's start time plus 8 (or 10) hours plus the unpaid meal period. Each job can override the schedule, start time and shift type on the Jobs tab. Lines the office has already moved by hand are never re-figured unless you choose to.</p>
+    <p class="hint">How the hours fall (Section 3.02a): on a <strong>5 × 8</strong> the first 4 hours after the scheduled quitting time are time and a half; on a <strong>4 × 10</strong> the first 2 hours after quitting are time and a half and the first 12 hours Friday are time and a half. <strong>Saturday</strong>: first 12 hours time and a half. <strong>Sunday and holidays</strong>: all double time. Everything outside those windows: double time. A <strong>night shift</strong> (3.11) is paid at the shift rate from the night start (6:00 PM) for the shift, then time and a half for 4 hours, then double time, by the clock the same as days: in at 9:00 PM on a 6:00 PM shift is 5 Reg to 2:30 AM, then OT. Quitting time is the job's start time plus 8 (or 10) hours plus the unpaid meal period. Each job can override the schedule, start time and shift type on the Jobs tab. Lines the office has already moved by hand are never re-figured unless you choose to.</p>
     <h3 style="font-size:13px;margin:14px 0 6px;color:var(--ink-2)">Holidays (all double time)</h3>
     <div id="holList"></div>
     <div class="row" style="margin-top:8px">
@@ -1791,7 +1791,11 @@ const jobStart = j => (j && j.start) || db.settings.startTime || "07:00";
    starts (6:00 PM), per job on the Jobs tab. The tablet turns away a night clock-in more than nightEarlyMin early. */
 const jobNightStart = j => (j && j.nstart) || db.settings.nightStart || "18:00";
 const nightEarlyMin = () => db.settings.nightEarlyMin == null ? 60 : Math.max(0, +db.settings.nightEarlyMin||0);
-function nightStartIso(p){ const j = job(p.ruleJob) || job(p.jobId); return T.atHM(p.date || T.dateOf(p.tin), jobNightStart(j)); }
+function nightStartIso(p){
+  const j = job(p.ruleJob) || job(p.jobId), ns = T.atHM(p.date || T.dateOf(p.tin), jobNightStart(j));
+  if(ns && p.tin && ms(p.tin) < ms(ns) - 12*3600000) return new Date(ms(ns) - 24*3600000).toISOString();   // in after midnight: last evening's start
+  return ns;
+}
 /* Half-hour rule, per job (Jobs tab). When it is on, the day shift pays from the scheduled start however early the
    man clocks in; a clock-out before the grace window rounds DOWN to the half hour; at or inside the grace window
    (3:00 on a 7-3:30 job) he gets the full day; past quitting time both ends round to the NEAREST half hour.
@@ -1948,17 +1952,15 @@ function clockSplit(p, j, used){
   const ten = jobSched(j)==="4x10";
   if(dow===5 || (ten && dow===4)){ const ot=Math.min(12,H); return Object.assign(z, {ot:r2(ot), dt:r2(H-ot)}); }
   const R = ten?10:8, W = ten?2:4;
-  if(okShift(p.shift)==="night"){
-    const prior = earlierLegs(p).reduce((a,x)=>a+punchHours(x), 0);     // hours already worked tonight on earlier legs
-    const rt = Math.max(0, Math.min(R - prior, H));
-    const ot = Math.min(Math.max(0, W - Math.max(0, prior - R)), H - rt);
-    return Object.assign(z, {rt:r2(rt), ot:r2(ot), dt:r2(H-rt-ot)});
-  }
+  /* Night shift (v67): the same clock windows as days, from the night start. Reg is the shift (6:00 PM to 2:30 AM on a
+     5x8 with a 30-minute meal), the next 4 hours OT, then DT; in late = fewer Reg hours, not OT pushed later. */
+  const night = okShift(p.shift)==="night";
   const sp = paidSpan(p), tin=new Date(sp.tin), tout=new Date(ms(sp.tout) + paidMeal(p)*3600000);   // a paid meal: as if he stayed 30 minutes past his clock-out
-  const startIso = T.atHM(date, jobStart(j)); if(!startIso) return Object.assign(z, {rt:H});
-  const start = new Date(startIso);
+  const startIso = T.atHM(date, night ? jobNightStart(j) : jobStart(j)); if(!startIso) return Object.assign(z, {rt:H});
+  let start = new Date(startIso);
+  if(night && tin.getTime() < start.getTime() - 12*3600000) start = new Date(start.getTime() - 24*3600000);   // clocked in after midnight: last evening's shift
   const unpaid = Math.max(0, (tout-tin)/3600000 - H);                    // the meal period sits inside the regular stretch
-  const quit = new Date(jobQuitIso(j, date) || (start.getTime() + (R + (+db.settings.mealMin||0)/60)*3600000));   // the scheduled quitting time (3:30), whatever meal came out of his day
+  const quit = new Date((!night && jobQuitIso(j, date)) || (start.getTime() + (R + (+db.settings.mealMin||0)/60)*3600000));   // the scheduled quitting time (3:30, 2:30 AM on nights), whatever meal came out of his day
   const otEnd = new Date(quit.getTime() + W*3600000);
   const clip = (a,b) => Math.max(0, (Math.min(tout,b)-Math.max(tin,a))/3600000);
   const early = clip(new Date(0), start);
@@ -5212,7 +5214,7 @@ function wireK(){
     { const e = emp(empId), lim = nightEarlyMin();
       if(e && e.crew==="night" && lim > 0 && !K.moving){
         const nowIso = T.now(), ns = T.atHM(T.dateOf(nowIso), jobNightStart(j));
-        if(ns && ms(nowIso) < ms(ns) - lim*60000){
+        if(ns && ms(nowIso) < ms(ns) - lim*60000 && ms(nowIso) > ms(ns) - 12*3600000){      // (after midnight he is late for last night's shift, not early for tonight's)
           const from = new Date(ms(ns) - lim*60000).toISOString();
           K.msg = "Too early. Night shift on "+crewJobTitle(j)+" starts at "+T.clock(ns)+"; you can clock in from "+T.clock(from)+". Come back then.";
           K.screen="done"; drawK(); return;
@@ -5644,8 +5646,8 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v66";                /* the label people see: from v63 on it is the same number as the build */
-const APP_BUILD = 66;                     /* what the update check compares (sw.js CACHE "adman-field-v66"); bump both together */
+const APP_VERSION = "v67";                /* the label people see: from v63 on it is the same number as the build */
+const APP_BUILD = 67;                     /* what the update check compares (sw.js CACHE "adman-field-v67"); bump both together */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
