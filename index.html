@@ -475,7 +475,7 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
           <button class="b ghost sm" id="dToday">Today</button>
         </span>
         <label class="f">Shift<select id="dShift"><option value="day">Day</option><option value="night">Night</option><option value="both">Both: day, then night</option></select></label>
-        <label class="f" style="flex:1 1 200px">Find<input type="search" id="dQ" list="qList" placeholder="Name or number" autocomplete="off"></label>
+        <label class="f" style="flex:1 1 200px">Find<input type="search" id="dQ" list="qList" placeholder="Name, number or PO" autocomplete="off"></label>
         <label class="jact moneyTog" hidden title="Labor cost, material prices and billing on this screen. Off each time you sign in."><input type="checkbox" class="moneyChk"> Show money</label>
         <div class="spacer"></div>
         <button class="b" id="addForm">Add job form</button>
@@ -504,7 +504,7 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
         </span>
         <label class="f">Shift<select id="wShift"><option value="day">Day</option><option value="night">Night</option><option value="both">Both: day, then night</option></select></label>
         <label class="f">Project manager<select id="wPm"></select></label>
-        <label class="f" style="flex:1 1 200px">Find<input type="search" id="wQ" list="qList" placeholder="Name or number" autocomplete="off"></label>
+        <label class="f" style="flex:1 1 200px">Find<input type="search" id="wQ" list="qList" placeholder="Name, number or PO" autocomplete="off"></label>
         <label class="jact moneyTog" hidden title="Labor cost, material prices and billing on this screen. Off each time you sign in."><input type="checkbox" class="moneyChk"> Show money</label>
         <div class="spacer"></div>
         <label class="f">Add a job to this week<select id="wAddJob"></select></label>
@@ -587,7 +587,7 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
           <button class="b ghost sm" id="tcToday">Today</button>
         </span>
         <label class="f" id="tcProjWrap" hidden>Project<select id="tcProj"></select></label>
-        <label class="f" style="flex:1 1 180px;max-width:260px">Find<input type="search" id="tcQ" placeholder="Name or number" autocomplete="off"></label>
+        <label class="f" style="flex:1 1 180px;max-width:260px">Find<input type="search" id="tcQ" placeholder="Name, number or PO" autocomplete="off"></label>
         <label class="jact moneyTog" hidden title="Labor cost, material prices and billing on this screen. Off each time you sign in."><input type="checkbox" class="moneyChk"> Show money</label>
         <div class="spacer"></div>
         <button class="b" id="tcAdd">Add a punch by hand</button>
@@ -2368,7 +2368,7 @@ function renderDaily(){
       renderDaily();
     };
   }
-  $("dayTot").innerHTML = totalStrip(sumTotals(forms.map(formTotals)), show$());
+  Q.dayForms = forms; $("dayTot").innerHTML = totalStrip(sumTotals(forms.map(formTotals)), show$());
 
   const host = $("forms");
   if(!forms.length){
@@ -2570,7 +2570,7 @@ function findForm(fid){ return (WORK && WORK.date===curDate ? WORK : dayRec(curD
 /* recompute the numbers without touching the inputs, so focus and tab order survive */
 function refreshCalcs(){
   const forms = dayFormsView(curDate, curShift);
-  $("dayTot").innerHTML = totalStrip(sumTotals(forms.map(formTotals)), show$());
+  Q.dayForms = forms; $("dayTot").innerHTML = totalStrip(sumTotals(forms.map(f=>qFormTotals(f, ($("dQ")||{}).value)).filter(Boolean)), show$());
   if(curShift==="both") ["day","night"].forEach(sh=>{ const el=document.querySelector('#forms [data-calc="bandhrs"][data-sh="'+sh+'"]'); if(el) el.textContent = hrs(sumTotals(forms.filter(f=>okShift(f.shift)===sh).map(formTotals)).hours); });
   forms.forEach(f=>{
     const t = formTotals(f), j = job(f.jobId), p = pmOf(f.jobId);
@@ -2664,7 +2664,7 @@ function renderWeekly(){
   const days = Array.from({length:7},(_,i)=>D.add(wkEnd,i-6));
   const secs = wkShift==="both" ? ["day","night"] : [wkShift];
   const allRecs = collect(d=>days.includes(d)).filter(r=>secs.includes(okShift(r.form.shift)) && (!wkPm || r.pm.id===wkPm));
-  $("weekTot").innerHTML = totalStrip(sumTotals(allRecs.map(r=>r.t)), show$());
+  Q.weekRecs = allRecs; $("weekTot").innerHTML = totalStrip(sumTotals(allRecs.map(r=>r.t)), show$());
   let html = "", any = false;
   secs.forEach(sh=>{
     wkSec = sh;
@@ -3507,16 +3507,28 @@ function empCard(e, list, $$){
    removed, so typing on the sheet and saving work exactly as before); forms or job blocks with no match are folded away. */
 const qMatch = (e, q) => { if(!q) return true; if(!e) return false; q=q.toLowerCase().trim(); const pin=String(e.pin||"");
   return e.name.toLowerCase().includes(q) || (!!pin && pin.startsWith(q)); };
+/* Find also takes a PO or job name: the whole job block shows and the header totals that job alone. With a man's name or
+   number the header totals just his lines (no materials). Q holds what the header strips were summed from. */
+const Q = {dayForms:[], weekRecs:[]};
+const qJob = (j, q) => { if(!q || !j) return false; q=q.toLowerCase().trim(); return (j.po||"").toLowerCase().includes(q) || (j.name||"").toLowerCase().includes(q); };
+function qFormTotals(f, q){
+  q=(q||"").trim(); if(!q) return formTotals(f);
+  if(qJob(job(f.jobId), q)) return formTotals(f);
+  const crew=(f.crew||[]).filter(c=>c.empId && qMatch(emp(c.empId), q)); if(!crew.length) return null;
+  return formTotals(Object.assign({}, f, {crew, materials:[]}));
+}
+const qHeader = (forms, q, el) => { $(el).innerHTML = totalStrip(sumTotals(forms.map(f=>qFormTotals(f, q)).filter(Boolean)), show$()); };
 function qListFill(){ const l=$("qList"); if(!l) return; const people=visCrew().filter(e=>e.active!==false).sort(byName); const html=people.map(e=>'<option value="'+esc(e.name)+'">#'+esc(e.pin||"")+(e.cls?" · "+esc(e.cls):"")+"</option>").join(""); if(l.dataset.n!==String(people.length)){ l.innerHTML=html; l.dataset.n=String(people.length); } }
 function applyDailyFind(){
   const q=($("dQ")&&$("dQ").value||"").trim(), note=$("dqNote"); if(!note) return;
   let rows=0, forms=0;
   document.querySelectorAll("#forms .jobform").forEach(card=>{
-    let hit=0;
-    card.querySelectorAll('select[data-a="crewEmp"]').forEach(sel=>{ const tr=sel.closest("tr"); const ok=!q || qMatch(emp(sel.value), q); tr.hidden=!ok; if(ok&&q){ hit++; rows++; } });
+    let hit=0; const jsel=card.querySelector('select[data-a="jobSel"]'); const jm = !!q && qJob(job(jsel && jsel.value), q);
+    card.querySelectorAll('select[data-a="crewEmp"]').forEach(sel=>{ const tr=sel.closest("tr"); const ok=!q || jm || qMatch(emp(sel.value), q); tr.hidden=!ok; if(ok&&q){ hit++; rows++; } });
     card.hidden = !!q && !hit; if(q && hit) forms++;
   });
   document.querySelectorAll("#forms .shiftband").forEach(b=>{ b.hidden=!!q; });
+  qHeader(Q.dayForms, q, "dayTot");
   note.innerHTML = q ? '<div class="flag '+(rows?"good":"warn")+'">'+(rows ? rows+" line"+(rows===1?"":"s")+' matching "'+esc(q)+'" on '+forms+" form"+(forms===1?"":"s")+"." : 'Nobody matching "'+esc(q)+'" on this day\'s '+(curShift==="both"?"":shiftName(curShift).toLowerCase()+" ")+"sheets.")+' <button class="b ghost sm" id="dQclr">Show everyone</button></div>' : "";
   const c=$("dQclr"); if(c) c.onclick=()=>{ $("dQ").value=""; applyDailyFind(); };
 }
@@ -3525,11 +3537,12 @@ function applyWeeklyFind(){
   let rows=0, blocks=0;
   document.querySelectorAll("#weekOut .card").forEach(card=>{
     const tb=card.querySelector("table.wkt tbody"); if(!tb){ card.hidden=!!q; return; }
-    let hit=0;
-    tb.querySelectorAll("tr").forEach(tr=>{ const inp=tr.querySelector("input[data-w]"); if(!inp){ tr.hidden=!!q; return; } const e=emp(inp.dataset.w.split("|")[2]); const ok=!q || qMatch(e,q); tr.hidden=!ok; if(ok&&q){ hit++; rows++; } });
+    let hit=0; const first=tb.querySelector("input[data-w]"); const jm = !!q && !!first && qJob(job(first.dataset.w.split("|")[0]), q);
+    tb.querySelectorAll("tr").forEach(tr=>{ const inp=tr.querySelector("input[data-w]"); if(!inp){ tr.hidden=!!q && !jm; return; } const e=emp(inp.dataset.w.split("|")[2]); const ok=!q || jm || qMatch(e,q); tr.hidden=!ok; if(ok&&q){ hit++; rows++; } });
     card.hidden = !!q && !hit; if(q && hit) blocks++;
   });
   document.querySelectorAll("#weekOut .shiftband").forEach(b=>{ b.hidden=!!q; });
+  qHeader(Q.weekRecs.map(r=>r.form), q, "weekTot");
   note.innerHTML = q ? '<div class="flag '+(rows?"good":"warn")+'" style="margin-top:8px">'+(rows ? rows+" line"+(rows===1?"":"s")+' matching "'+esc(q)+'" in '+blocks+" job block"+(blocks===1?"":"s")+" this week." : 'Nobody matching "'+esc(q)+'" this week.')+' <button class="b ghost sm" id="wQclr">Show everyone</button></div>' : "";
   const c=$("wQclr"); if(c) c.onclick=()=>{ $("wQ").value=""; applyWeeklyFind(); };
 }
@@ -5290,7 +5303,7 @@ function openNewPunch(){
   const empOpt = q => { q=(q||"").trim().toLowerCase(); const hit = cr.filter(e=>!q || e.name.toLowerCase().includes(q) || String(e.pin||"").startsWith(q));
     return '<option value="">'+(hit.length?"Pick a man ("+hit.length+")":"Nobody matches")+'</option>'+hit.map(e=>'<option value="'+e.id+'">'+esc(e.name)+(e.pin?" · "+esc(e.pin):"")+(e.crew==="night"?" (N)":"")+"</option>").join(""); };
   box.innerHTML = '<h3>New punch</h3><div class="row">'+
-    '<label class="f" style="flex:0 1 200px">Find<input type="search" id="npQ" placeholder="Name or number" autocomplete="off"></label>'+
+    '<label class="f" style="flex:0 1 200px">Find<input type="search" id="npQ" placeholder="Name, number or PO" autocomplete="off"></label>'+
     '<label class="f npwho">Employee<select id="npEmp">'+empOpt("")+'</select></label>'+
     '<label class="f npjob">Job<select id="npJob">'+jobOptHTML(vj, tcProj&&tcProj.startsWith("proj:")&&projOf(tcProj.slice(5),vj).length===1 ? projOf(tcProj.slice(5),vj)[0].id : "", "Pick a job")+'</select></label>'+
     '<label class="f">Shift<select id="npShift"><option value="day">Day</option><option value="night">Night</option></select></label>'+
@@ -5646,8 +5659,8 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v67";                /* the label people see: from v63 on it is the same number as the build */
-const APP_BUILD = 67;                     /* what the update check compares (sw.js CACHE "adman-field-v67"); bump both together */
+const APP_VERSION = "v68";                /* the label people see: from v63 on it is the same number as the build */
+const APP_BUILD = 68;                     /* what the update check compares (sw.js CACHE "adman-field-v68"); bump both together */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
