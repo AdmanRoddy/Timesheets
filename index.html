@@ -2218,10 +2218,13 @@ function geoNow(fresh){
     if(!navigator.geolocation){ GEO.err="nogeo"; return res(null); }
     let done=false; const fin=v=>{ if(!done){ done=true; res(v); } };
     setTimeout(()=>{ if(!done) GEO.err = GEO.err||"timeout"; fin(null); }, 15000);
-    navigator.geolocation.getCurrentPosition(
-      p=>fin({lat:+p.coords.latitude.toFixed(6), lon:+p.coords.longitude.toFixed(6), acc:Math.round(p.coords.accuracy*3.28084), at:new Date().toISOString()}),
-      e=>{ GEO.err = e && e.code===1 ? "denied" : e && e.code===3 ? "timeout" : "unavailable"; fin(null); },
-      {enableHighAccuracy:true, timeout:12000, maximumAge: fresh ? 0 : 60000});
+    const got = p=>fin({lat:+p.coords.latitude.toFixed(6), lon:+p.coords.longitude.toFixed(6), acc:Math.round(p.coords.accuracy*3.28084), at:new Date().toISOString()});
+    const why = e => e && e.code===1 ? "denied" : e && e.code===3 ? "timeout" : "unavailable";
+    navigator.geolocation.getCurrentPosition(got,
+      e=>{ GEO.err = why(e); if(GEO.err==="denied" || done) return fin(null);
+        // precise fix failed (indoors, trailer, Wi-Fi-only iPad): take a coarse one, enough to place him on a site
+        navigator.geolocation.getCurrentPosition(got, e2=>{ GEO.err = why(e2); fin(null); }, {enableHighAccuracy:false, timeout:6000, maximumAge: fresh ? 0 : 60000}); },
+      {enableHighAccuracy:true, timeout:8000, maximumAge: fresh ? 0 : 60000});
   });
 }
 const geoAsk = () => geoMode()!=="off" && db.settings.geoAsk!==false;
@@ -5190,7 +5193,7 @@ function wireK(){
           const e = byPin(K.pin);
           if(!e){ K.msg="That number was not recognised. Try again or see the office."; K.pin=""; drawK(); shaneNo(); }
           else if(OFFICE.includes(e.role) && e.role!=="super" && !(e.crew==="day"||e.crew==="night")){ K.pin=""; K.msg=""; enterOffice(e); }
-          else { K.empId=e.id; K.pin=""; K.msg=""; K.geoP=null; K.screen = geoAsk() ? "geoask" : "menu"; drawK(); const who=e.id; freshPunches(who).then(()=>{ if(K.empId===who && K.screen==="menu") drawK(); }); }
+          else { K.empId=e.id; K.pin=""; K.msg=""; K.geoP=null; K.screen = (geoAsk() && !OFFICE.includes(e.role)) ? "geoask" : "menu"; drawK(); const who=e.id; freshPunches(who).then(()=>{ if(K.empId===who && K.screen==="menu") drawK(); }); }
           break;
         }
         case "jobs": K.screen="jobs"; K.proj=null; K.moving=false; K.multi=false; K.pick=[]; drawK(); break;
@@ -5704,8 +5707,8 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v70";                /* the label people see: from v63 on it is the same number as the build */
-const APP_BUILD = 70;                     /* what the update check compares (sw.js CACHE "adman-field-v70"); bump both together */
+const APP_VERSION = "v71";                /* the label people see: from v63 on it is the same number as the build */
+const APP_BUILD = 71;                     /* what the update check compares (sw.js CACHE "adman-field-v71"); bump both together */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
