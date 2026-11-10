@@ -1302,6 +1302,9 @@ function foremanColor(id){ const f=foremanOf(id); return f && f.color ? f.color 
 const CLASSES = ["Superintendent","General Foreman","Nonworking Foreman","Foreman","Safety","Energy Marshall","Surveyor/BIM","JW w/ Welding","JW Cable Splicer","JW Tech","JW",
   "AP6","AP5","AP4","AP3","AP2","AP1","CE3","CE2","CE1","CW5","CW4","CW3","CW2","CW1","Helper"];
 const okShift = s => SHIFTS.includes(s) ? s : "day";
+const FOREMAN_CLS = ["Foreman","General Foreman","Nonworking Foreman"];   // the classes that make a man a foreman in the app
+/* how a leader is labelled in the Reports-to / Under lists: a foreman by his class (GF, NWF, F), everyone else by role */
+const leadTag = e => e.role==="foreman" && FOREMAN_CLS.includes(e.cls) ? clsAbbr(e.cls) : e.role;
 /* Short classification tags beside names on the sheets. A man's standing class comes from the roster; the Weekly can set a
    different class for one week (a JW filling in as foreman), stored per week ending in db.weekCls[we].c[empId] so the sheets
    for that week keep it after he goes back. */
@@ -1394,6 +1397,7 @@ function sanitize(d){
   const ids = new Set(d.employees.map(e=>e.id));
   d.employees.forEach(e=>{
     if(!e.role) e.role = "employee";                                   // a role this build does not know is left alone, never rewritten
+    if(FOREMAN_CLS.includes(e.cls) && e.role==="employee") e.role = "foreman";   // v69: a foreman class set by a super makes him a foreman
     if(e.reportsTo && (!ids.has(e.reportsTo) || e.reportsTo===e.id)) e.reportsTo = "";
     if(e.color && !PALETTE.some(c=>c[0]===e.color)) e.color = "";
     if(e.crew !== "" && !SHIFTS.includes(e.crew)) e.crew = OFFICE.includes(e.role) ? "" : "day";
@@ -2040,6 +2044,15 @@ const canRoles = () => !!ME && (ME.role==="admin" || ME.role==="office");
 const canEarly = () => !!ME && (ME.role==="admin" || ME.role==="pm");    // who may set "paid from his real clock-in"
 /* only an admin can make someone an admin, or change an admin */
 const roleChoices = cur => abc(ROLES).filter(r=>r!=="admin" || (ME&&ME.role==="admin") || cur==="admin");
+/* Class and role stay in step for foremen (v69): a super sees Class but not Role, so picking a foreman class on a plain
+   employee makes him a foreman in the app (color, crew, chain); a plain class on a foreman nobody reports to makes him
+   an employee again. Supers, PMs and the office are never changed by their class. */
+function syncRoleToClass(e){
+  if(!e) return "";
+  if(FOREMAN_CLS.includes(e.cls) && e.role==="employee"){ e.role="foreman"; return "foreman"; }
+  if(e.cls && !FOREMAN_CLS.includes(e.cls) && e.role==="foreman" && !db.employees.some(x=>x.reportsTo===e.id)){ e.role="employee"; delete e.color; return "employee"; }
+  return "";
+}
 const canMarkup= () => money$();
 const TABS = {
   foreman: ["daily","weekly","safety"],
@@ -2829,7 +2842,7 @@ function renderCrew(keepFilters){
   $("cRoleWrap").hidden = !rol; $("cRateWrap").hidden = !adm;
   $("cRole").innerHTML = roleChoices("").map(r=>'<option value="'+r+'">'+r+"</option>").join("");
   if(!$("cClass").options.length) $("cClass").innerHTML = '<option value="">Pick a class</option>'+abc(CLASSES).map(c=>'<option value="'+c+'">'+c+"</option>").join("");
-  const bossOpts = self => ['<option value="">Nobody</option>'].concat(db.employees.filter(e=>canLead(e) && e.active!==false && e.id!==self && (canSeeEmp(e.id) || e.id===ME.id)).map(e=>'<option value="'+e.id+'">'+esc(e.name)+" ("+e.role+")</option>")).join("");
+  const bossOpts = self => ['<option value="">Nobody</option>'].concat(db.employees.filter(e=>canLead(e) && e.active!==false && e.id!==self && (canSeeEmp(e.id) || e.id===ME.id)).map(e=>'<option value="'+e.id+'">'+esc(e.name)+" ("+leadTag(e)+")</option>")).join("");
   $("cBoss").innerHTML = bossOpts("");
   $("crewHint").textContent = adm
     ? "Cost rate is what the man costs Adman per straight-time hour; overtime and double time use the multipliers on Settings. Rates feed every cost and billing figure on the reports."+(rol?" Roles are set here too.":" Roles are set by an admin.")
@@ -2842,7 +2855,7 @@ function renderCrew(keepFilters){
   if(!seesAll() && !safety && !$("cBoss").value) $("cBoss").value = ME.id;
   if(!keepFilters){
     fillSelect($("cfRole"), [["","All roles"]].concat(abc(ROLES).map(r=>[r,r])), CF.role);
-    fillSelect($("cfUnder"), [["","Anyone"]].concat(db.employees.filter(e=>canLead(e)&&(canSeeEmp(e.id)||e.id===(ME&&ME.id))).sort((a,b)=>a.name.localeCompare(b.name)).map(e=>[e.id,e.name+" ("+e.role+")"])), CF.under);
+    fillSelect($("cfUnder"), [["","Anyone"]].concat(db.employees.filter(e=>canLead(e)&&(canSeeEmp(e.id)||e.id===(ME&&ME.id))).sort((a,b)=>a.name.localeCompare(b.name)).map(e=>[e.id,e.name+" ("+leadTag(e)+")"])), CF.under);
     $("cfQ").value = CF.q; $("cfCrew").value = CF.crew; $("cfActive").value = CF.active; $("cfSort").value = CF.sort;
   }
   const list = crewFilter(all).sort(crewSort);
@@ -2880,6 +2893,7 @@ function renderCrew(keepFilters){
       }
       if(p==="early"){ if(!canEarly()){ renderCrew(true); return; } const want=ev.target.checked, dflt=(e.role==="foreman"||e.role==="super"); if(want===dflt) delete e.early; else e.early=want; save(); renderCrew(true); return; }
       e[p] = p==="active" ? ev.target.checked : (p==="rate" ? +v||0 : v);
+      if(p==="cls"){ const r=syncRoleToClass(e); if(r==="foreman") tell(e.name+" is a foreman in the app now. Pick his color."); else if(r==="employee") tell(e.name+" is a regular employee in the app now."); }
       if(p==="role" && OFFICE.includes(v) && e.crew!=="") { /* office people may still work a crew */ }
       if(p==="reportsTo" && v && underOf(e.id).has(v)){ tell("That would make a loop in the chain."); renderCrew(true); return; }
       save(); if(p!=="name" && p!=="pin") renderCrew(true);
@@ -3369,7 +3383,7 @@ function renderReports(){
   fillSelect($("rQtr"), qs.map(q=>[q,q.replace("-"," ")]).reverse(), $("rQtr").value);
   fillSelect($("rPm"), [["","All project managers"]].concat(db.pms.map(p=>[p.id,p.name])), $("rPm").value);
   fillJobSelect($("rJob"), visJobs(), "All jobs", $("rJob").value, true);
-  fillSelect($("rUnder"), [["","Everyone"]].concat(visPeople().filter(canLead).sort((a,b)=>a.name.localeCompare(b.name)).map(e=>[e.id,e.name+" ("+e.role+")"])), $("rUnder").value);
+  fillSelect($("rUnder"), [["","Everyone"]].concat(visPeople().filter(canLead).sort((a,b)=>a.name.localeCompare(b.name)).map(e=>[e.id,e.name+" ("+leadTag(e)+")"])), $("rUnder").value);
   const pickable = visPeople().filter(e=>crewOnly().some(c=>c.id===e.id)).sort((a,b)=>a.name.localeCompare(b.name));
   $("rEmpList").innerHTML = pickable.map(e=>'<option value="'+esc(empLabel(e))+'"></option>').join("");
   const mode = $("rMode").value, sh = $("rShift").value, rp = $("rPm").value, rj = $("rJob").value, ru = $("rUnder").value;
@@ -5659,8 +5673,8 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v68";                /* the label people see: from v63 on it is the same number as the build */
-const APP_BUILD = 68;                     /* what the update check compares (sw.js CACHE "adman-field-v68"); bump both together */
+const APP_VERSION = "v69";                /* the label people see: from v63 on it is the same number as the build */
+const APP_BUILD = 69;                     /* what the update check compares (sw.js CACHE "adman-field-v69"); bump both together */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
