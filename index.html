@@ -2229,9 +2229,18 @@ function geoNow(fresh){
 }
 const geoAsk = () => geoMode()!=="off" && db.settings.geoAsk!==false;
 function geoWhy(){
+  const ua = navigator.userAgent;
+  const inApp = /\b(Teams|Outlook|FBAN|FBAV|Instagram|Line\/|MicroMessenger|GSA\/|DuckDuckGo)\b/.test(ua) || (/iPhone|iPad/.test(ua) && !/Safari\//.test(ua) && !navigator.standalone);
+  if(GEO.err==="denied" && inApp) return "This page is open inside another app's browser (a link from Teams, Mail or a scanner), which cannot use location. Open Safari, go to the app's address, and add it to the Home Screen; open it from that icon.";
   return GEO.err==="denied" ? "Location is turned off for this app on this tablet. In the tablet's Settings, allow Location for Safari (or this app) and try again."
        : GEO.err==="nogeo" ? "This tablet has no location service."
        : "This tablet could not get a GPS fix. Move where the tablet can see the sky, make sure Location Services are on, and try again.";
+}
+/* one line for the office when a tablet cannot get location: where the page is open and what it is running */
+function geoHow(){
+  const ua = navigator.userAgent, ios = ua.match(/OS (\d+)[_.](\d+)/), sa = !!navigator.standalone || matchMedia("(display-mode: standalone)").matches;
+  const where = sa ? "Home Screen icon" : /Safari\//.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua) ? "Safari" : /CriOS/.test(ua) ? "Chrome" : "another app's browser";
+  return "Opened in: "+where+(ios ? " · iPadOS/iOS "+ios[1]+"."+ios[2] : "")+(GEO.err ? " · "+GEO.err : "");
 }
 function feetBetween(a,b){
   const R=20902231, t=x=>x*Math.PI/180, dLa=t(b.lat-a.lat), dLo=t(b.lon-a.lon);
@@ -5072,7 +5081,7 @@ function drawK(){
   else if(K.screen==="geoask"){
     /* every sign-in (Settings: Location at sign-in): the tablet takes a fresh GPS fix before the menu */
     c.innerHTML = '<h3>'+esc(e.name)+'</h3><div class="k-body">'+
-      (K.msg ? '<div class="flag warn">'+esc(K.msg)+"</div>" : '<p class="k-msg">This tablet needs your location to clock in.</p>')+
+      (K.msg ? '<div class="flag warn">'+esc(K.msg)+'</div><p class="mini" style="text-align:center">'+esc(geoHow())+"</p>" : '<p class="k-msg">This tablet needs your location to clock in.</p>')+
       '<button class="b red big" data-k="geook">'+(K.msg?"Try again":"Allow location")+'</button>'+
       (K.msg && geoMode()!=="block" ? '<button class="b ghost big" data-k="geoskip">Continue without it</button>' : "")+
       '<button class="b ghost big" data-k="home">Start over</button></div>';
@@ -5707,8 +5716,8 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v71";                /* the label people see: from v63 on it is the same number as the build */
-const APP_BUILD = 71;                     /* what the update check compares (sw.js CACHE "adman-field-v71"); bump both together */
+const APP_VERSION = "v72";                /* the label people see: from v63 on it is the same number as the build */
+const APP_BUILD = 72;                     /* what the update check compares (sw.js CACHE "adman-field-v72"); bump both together */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
