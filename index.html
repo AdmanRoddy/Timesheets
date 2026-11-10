@@ -817,11 +817,12 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
       <label class="f">Job-site check at clock-in<select id="geoMode">
         <option value="block">Only on site (geofence)</option><option value="flag">Allow, but flag off-site</option><option value="off">Off</option>
       </select></label>
+      <label class="f">Location at sign-in<select id="geoAsk"><option value="1">Ask every time (Allow location step)</option><option value="0">Check quietly</option></select></label>
       <label class="f">Default site radius<select id="geoFt">
         <option value="500">500 ft</option><option value="1000">1,000 ft</option><option value="1500">1,500 ft</option><option value="2640">½ mile</option><option value="5280">1 mile</option>
       </select></label>
     </div>
-    <p class="hint">Set each job's site on the Jobs tab. <strong>Only on site</strong>: a man can't clock in on a geofenced job unless the tablet is inside its radius. <strong>Allow, but flag</strong>: he can, and the Digital Timesheet marks it. Clock-outs are never blocked; where they happened is recorded. Jobs with no site set aren't checked. The tablet asks once for permission to use its location.</p>
+    <p class="hint">Set each job's site on the Jobs tab. <strong>Only on site</strong>: a man can't clock in on a geofenced job unless the tablet is inside its radius, and a tablet with no GPS fix (location off, or denied for this app) cannot clock in on one at all (v70). <strong>Ask every time</strong>: each sign-in starts with an Allow location step that takes a fresh fix before the menu. <strong>Allow, but flag</strong>: he can, and the Digital Timesheet marks it. Clock-outs are never blocked; where they happened is recorded. Jobs with no site set aren't checked. The tablet asks once for permission to use its location.</p>
     <p class="hint">Nobody clocks out for lunch, so the meal period comes off automatically. With 15 minutes, 7:00 to 3:15 pays 8.00. A man who works through lunch gets the Meal box unticked on the Digital Timesheet tab.</p>
     <div id="kioskMsg"></div>
   </div></div>
@@ -2210,15 +2211,24 @@ function stalePunch(p){
    checked against it: in "block" mode a man can't clock in on a job he isn't
    standing on; in "flag" mode he can, and the Digital Timesheet marks it. */
 function geoMode(){ return db.settings.geoMode || "off"; }
-function geoNow(){
+const GEO = {err:null};                                   // why the last fix failed: "denied", "unavailable", "timeout", "nogeo"
+function geoNow(fresh){
   return new Promise(res=>{
-    if(!navigator.geolocation) return res(null);
+    GEO.err = null;
+    if(!navigator.geolocation){ GEO.err="nogeo"; return res(null); }
     let done=false; const fin=v=>{ if(!done){ done=true; res(v); } };
-    setTimeout(()=>fin(null), 15000);
+    setTimeout(()=>{ if(!done) GEO.err = GEO.err||"timeout"; fin(null); }, 15000);
     navigator.geolocation.getCurrentPosition(
       p=>fin({lat:+p.coords.latitude.toFixed(6), lon:+p.coords.longitude.toFixed(6), acc:Math.round(p.coords.accuracy*3.28084), at:new Date().toISOString()}),
-      ()=>fin(null), {enableHighAccuracy:true, timeout:12000, maximumAge:60000});
+      e=>{ GEO.err = e && e.code===1 ? "denied" : e && e.code===3 ? "timeout" : "unavailable"; fin(null); },
+      {enableHighAccuracy:true, timeout:12000, maximumAge: fresh ? 0 : 60000});
   });
+}
+const geoAsk = () => geoMode()!=="off" && db.settings.geoAsk!==false;
+function geoWhy(){
+  return GEO.err==="denied" ? "Location is turned off for this app on this tablet. In the tablet's Settings, allow Location for Safari (or this app) and try again."
+       : GEO.err==="nogeo" ? "This tablet has no location service."
+       : "This tablet could not get a GPS fix. Move where the tablet can see the sky, make sure Location Services are on, and try again.";
 }
 function feetBetween(a,b){
   const R=20902231, t=x=>x*Math.PI/180, dLa=t(b.lat-a.lat), dLo=t(b.lon-a.lon);
@@ -3894,7 +3904,7 @@ function renderSettings(){
     $("shaneOn").checked = db.settings.shaneNo!==false;
     $("pmMin").value = String(paidMealMin()); $("pmAfter").value = String(paidMealAfter());
     $("geoMode").value = db.settings.geoMode || "off";
-    $("geoFt").value = String(+db.settings.geoFt||1000);
+    $("geoFt").value = String(+db.settings.geoFt||1000); $("geoAsk").value = db.settings.geoAsk===false ? "0" : "1";
     $("kioskMsg").innerHTML = String(db.settings.adminPin||"0000")==="0000"
       ? '<div class="flag">The office passcode is still 0000. Change it before this goes out on the tablets.</div>'
     : (crewOnly().some(e=>!e.pin)
@@ -3981,6 +3991,7 @@ $("roundTo").onchange = e=>{ db.settings.roundTo = +e.target.value; save(); };
 $("mealMin").onchange = e=>{ db.settings.mealMin = +e.target.value; save(); };
 $("geoMode").onchange = e=>{ db.settings.geoMode = e.target.value; save(); };
 $("geoFt").onchange = e=>{ db.settings.geoFt = +e.target.value; save(); };
+$("geoAsk").onchange = e=>{ db.settings.geoAsk = e.target.value==="1"; save(); };
 $("setSched").onchange = e=>{ db.settings.sched = e.target.value; save(); };
 $("setStart").onchange = e=>{ if(/^\d{2}:\d{2}$/.test(e.target.value)){ db.settings.startTime = e.target.value; save(); } };
 $("setNStart").onchange = e=>{ if(/^\d{2}:\d{2}$/.test(e.target.value)){ db.settings.nightStart = e.target.value; save(); offerRefigureNight(); } };
@@ -5055,6 +5066,14 @@ function drawK(){
   else if(K.screen==="locating"){
     c.innerHTML = '<h3>One moment…</h3><div class="k-body"><p class="k-msg">'+(geoMode()!=="off"?"Checking this tablet is on the job site.":"Checking the clock.")+'</p></div>';
   }
+  else if(K.screen==="geoask"){
+    /* every sign-in (Settings: Location at sign-in): the tablet takes a fresh GPS fix before the menu */
+    c.innerHTML = '<h3>'+esc(e.name)+'</h3><div class="k-body">'+
+      (K.msg ? '<div class="flag warn">'+esc(K.msg)+"</div>" : '<p class="k-msg">This tablet needs your location to clock in.</p>')+
+      '<button class="b red big" data-k="geook">'+(K.msg?"Try again":"Allow location")+'</button>'+
+      (K.msg && geoMode()!=="block" ? '<button class="b ghost big" data-k="geoskip">Continue without it</button>' : "")+
+      '<button class="b ghost big" data-k="home">Start over</button></div>';
+  }
   else if(K.screen==="menu"){
     if(geoMode()!=="off" && !K.geoP) K.geoP = geoNow();     // start the GPS now so clock-in is quick
     const op = openPunch(K.empId);
@@ -5171,7 +5190,7 @@ function wireK(){
           const e = byPin(K.pin);
           if(!e){ K.msg="That number was not recognised. Try again or see the office."; K.pin=""; drawK(); shaneNo(); }
           else if(OFFICE.includes(e.role) && e.role!=="super" && !(e.crew==="day"||e.crew==="night")){ K.pin=""; K.msg=""; enterOffice(e); }
-          else { K.empId=e.id; K.pin=""; K.msg=""; K.screen="menu"; drawK(); const who=e.id; freshPunches(who).then(()=>{ if(K.empId===who && K.screen==="menu") drawK(); }); }
+          else { K.empId=e.id; K.pin=""; K.msg=""; K.geoP=null; K.screen = geoAsk() ? "geoask" : "menu"; drawK(); const who=e.id; freshPunches(who).then(()=>{ if(K.empId===who && K.screen==="menu") drawK(); }); }
           break;
         }
         case "jobs": K.screen="jobs"; K.proj=null; K.moving=false; K.multi=false; K.pick=[]; drawK(); break;
@@ -5181,6 +5200,13 @@ function wireK(){
         case "gomulti": { const picks=(K.pick||[]).filter(id=>job(id)); if(!picks.length) break; K.multi=false; K.pick=[]; kClockIn(picks[0], picks.length>1?picks:null); break; }
         case "office": { const e=emp(K.empId); K.pin=""; K.msg=""; enterOffice(e); break; }
         case "back": K.screen="menu"; drawK(); break;
+        case "geook": { const who=K.empId; K.screen="locating"; drawK();
+          K.geoP = geoNow(true);
+          K.geoP.then(fix=>{ if(K.empId!==who || K.screen!=="locating") return;
+            if(fix){ K.msg=""; K.screen="menu"; drawK(); }
+            else { K.geoP=null; K.msg = geoWhy(); K.screen="geoask"; drawK(); } });
+          break; }
+        case "geoskip": K.msg=""; K.geoP=null; K.screen="menu"; drawK(); break;
         case "safety": { const op=openPunch(K.empId); if(!op) break; K.sj=op.jobId; K.sp=op.id; K.acked=[]; K.msg="On the clock since "+sinceTxt(op.tin)+"."; K.screen="safety"; drawK(); break; }
         case "ack": break;                                   // handled on the link itself
         case "home": K.screen="pin"; K.empId=null; K.pin=""; K.msg=""; drawK(); break;
@@ -5234,7 +5260,12 @@ function wireK(){
         K.msg = "This tablet is "+fmtDist(g.dist)+" from the "+crewJobTitle(j)+" job site. You can only clock in on this job from the site.";
         K.empId = empId; K.screen="done"; drawK(); return;
       }
-      if(g.nofix || g.weak) K.geoP = null;                   // no usable fix: let him in, the office sees it flagged
+      if(g.nofix){                                           // v70: no GPS, no clock-in on a geofenced job
+        K.geoP = null;
+        K.msg = "Location is required to clock in on "+crewJobTitle(j)+". "+geoWhy();
+        K.empId = empId; K.screen="done"; drawK(); return;
+      }
+      if(g.weak) K.geoP = null;                              // a rough fix that cannot place him: let him in, the office sees it flagged
     }
     await fresh;
     K.empId = empId;
@@ -5673,8 +5704,8 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v69";                /* the label people see: from v63 on it is the same number as the build */
-const APP_BUILD = 69;                     /* what the update check compares (sw.js CACHE "adman-field-v69"); bump both together */
+const APP_VERSION = "v70";                /* the label people see: from v63 on it is the same number as the build */
+const APP_BUILD = 70;                     /* what the update check compares (sw.js CACHE "adman-field-v70"); bump both together */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
