@@ -1954,15 +1954,17 @@ function clockSplit(p, j, used){
   if(!(H>0) || !p.tin || !p.tout) return Object.assign(z, {rt:H});
   const date = p.date || T.dateOf(p.tin), dow = D.dow(date);
   const r2 = v => Math.round(v*100)/100;
-  if(holidayOn(date) || dow===6) return Object.assign(z, {dt:H});
+  const dayTxt = DAYNAME[dow]+" "+D.short(date);
+  const hol = holidayOn(date);
+  if(hol || dow===6) return Object.assign(z, {dt:H, why:(hol ? "Holiday ("+hol+"), " : "")+dayTxt+": all double time"});
   const ten = jobSched(j)==="4x10";
-  if(dow===5 || (ten && dow===4)){ const ot=Math.min(12,H); return Object.assign(z, {ot:r2(ot), dt:r2(H-ot)}); }
+  if(dow===5 || (ten && dow===4)){ const ot=Math.min(12,H); return Object.assign(z, {ot:r2(ot), dt:r2(H-ot), why:DAYNAME[dow]+" "+D.short(date)+": first 12 hours time and a half, then double"}); }
   const R = ten?10:8, W = ten?2:4;
   /* Night shift (v67): the same clock windows as days, from the night start. Reg is the shift (6:00 PM to 2:30 AM on a
      5x8 with a 30-minute meal), the next 4 hours OT, then DT; in late = fewer Reg hours, not OT pushed later. */
   const night = okShift(p.shift)==="night";
   const sp = paidSpan(p), tin=new Date(sp.tin), tout=new Date(ms(sp.tout) + paidMeal(p)*3600000);   // a paid meal: as if he stayed 30 minutes past his clock-out
-  const startIso = T.atHM(date, night ? jobNightStart(j) : jobStart(j)); if(!startIso) return Object.assign(z, {rt:H});
+  const startIso = T.atHM(date, night ? jobNightStart(j) : jobStart(j)); if(!startIso) return Object.assign(z, {rt:H, why:"no start time set: all regular"});
   let start = new Date(startIso);
   if(night && tin.getTime() < start.getTime() - 12*3600000) start = new Date(start.getTime() - 24*3600000);   // clocked in after midnight: last evening's shift
   const unpaid = Math.max(0, (tout-tin)/3600000 - H);                    // the meal period sits inside the regular stretch
@@ -1981,11 +1983,21 @@ function clockSplit(p, j, used){
   if(rt > rtRoom + 0.001){ ot = r2(ot + rt - rtRoom); rt = r2(rtRoom); }
   const room = Math.max(0, W - (+used.ot||0));                           // 4 hours of 1.5x a day, then 2x
   if(ot > room + 0.001){ dt = r2(dt + ot - room); ot = r2(room); }
-  return {rt, ot, dt};
+  const why = dayTxt+(night?" night":"")+", "+T.clock(start.toISOString())+" start: Reg to "+T.clock(quit.toISOString())+", OT to "+T.clock(otEnd.toISOString())+", then DT"+
+    (early>0.001 ? "; in before the start ("+hrs(early)+" h) is "+(db.settings.earlyAs==="ot"?"OT":"DT") : "")+
+    ((used.rt||used.ot) ? "; earlier legs today used "+hrs(used.rt||0)+" Reg, "+hrs(used.ot||0)+" OT" : "");
+  return {rt, ot, dt, why};
+}
+/* for the office: the clock-in and clock-out with their days, and why the Reg / OT / DT came out as they did */
+function clockLine(p){
+  if(!p || !p.tin) return "";
+  const d = iso => DAYNAME[D.dow(T.dateOf(iso))].slice(0,3)+" "+D.short(T.dateOf(iso))+" "+T.clock(iso);
+  const s = p.tout ? lineSplit(p) : null;
+  return "Clock: "+d(p.tin)+(p.tout ? " – "+d(p.tout) : " – on the clock")+(p.date && p.date!==T.dateOf(p.tin) ? " (on the "+D.short(p.date)+" sheet)" : "")+(s && s.why ? " · "+s.why : "");
 }
 function lineSplit(p){
   const h = Math.round((p.tout ? punchHours(p) : (+p.hours||0))*100)/100;
-  return db.settings.autoSplit===false ? {rt:h, ot:0, dt:0} : splitPunch(p, job(p.jobId));
+  return db.settings.autoSplit===false ? {rt:h, ot:0, dt:0, why:"automatic Reg / OT / DT is off in Settings: all regular"} : splitPunch(p, job(p.jobId));
 }
 /* Adman's way: overhead on the labor total (or labor plus material, by setting),
    then profit on that total including the overhead when compounded */
@@ -2481,6 +2493,7 @@ function formHTML(f,i){
     const op = c.punchId ? db.punches.find(x=>x.id===c.punchId && !x.tout) : null;
     return '<tr><td class="who"><select data-a="crewEmp" data-f="'+f.id+'" data-k="'+k+'"'+(c.punchId?' data-p="'+esc(c.punchId)+'"':"")+'>'+empOpts(c.empId)+'</select>'+clsTag(c.empId, curDate)+
       (op ? '<div class="mini" style="color:var(--red)">On the clock since '+sinceTxt(paidSpan(op).tin)+(paidSpan(op).rounded?' <span style="color:var(--ink-2)">(in at '+T.clock(op.tin)+')</span>':'')+'</div>' : c.open ? '<div class="mini">On the clock</div>' : "")+
+      (c.punchId && !op ? '<div class="mini" style="white-space:normal">'+esc(clockLine(db.punches.find(x=>x.id===c.punchId)))+'</div>' : "")+
       (handTyped(c) && c.punchId && !op ? '<div class="mini">Typed by hand · <button class="lnk" data-a="useClock" data-f="'+f.id+'" data-k="'+k+'" data-p="'+esc(c.punchId)+'" title="Throw away the typed hours and figure this line from his clock-in and clock-out again">Use the clock</button></div>' : "")+'</td>'+
       ['rt','ot','dt'].map(h=>'<td class="n h-'+h+'" data-l="'+(h==="rt"?"Reg":h==="ot"?"O.T. 1.5×":"D.T. 2×")+'"><input class="h num" type="number" step="0.25" min="0" data-a="crewH" data-h="'+h+'" data-f="'+f.id+'" data-k="'+k+'" value="'+(c[h]||"")+'"></td>').join("")+
       '<td class="n num hrs" data-l="Hours" data-calc="rowhrs" data-f="'+f.id+'" data-k="'+k+'">'+hrs((+c.rt||0)+(+c.ot||0)+(+c.dt||0))+"</td>"+
@@ -5464,7 +5477,7 @@ function renderClock(){
   const rowOf = p=>{
         const e=emp(p.empId), r=lineRate(e, job(p.jobId), p.shift);
         return '<tr><td class="who"><select data-pp="'+p.id+'" data-f="empId">'+
-          crewOnly().filter(x=>canSeeEmp(x.id)||x.id===p.empId).sort(byName).map(x=>'<option value="'+x.id+'"'+(x.id===p.empId?" selected":"")+">"+esc(x.name)+"</option>").join("")+"</select>"+clsTag(p.empId, p.date||tcDate)+"</td>"+
+          crewOnly().filter(x=>canSeeEmp(x.id)||x.id===p.empId).sort(byName).map(x=>'<option value="'+x.id+'"'+(x.id===p.empId?" selected":"")+">"+esc(x.name)+"</option>").join("")+"</select>"+clsTag(p.empId, p.date||tcDate)+'<div class="mini" style="white-space:normal;max-width:420px;margin-top:4px">'+esc(clockLine(p))+'</div></td>'+
           '<td class="jb" data-l="Job"><select data-pp="'+p.id+'" data-f="jobId">'+
           jobOptHTML(db.jobs.filter(x=>canSeeJob(x.id)||x.id===p.jobId), p.jobId, "", false, true)+"</select></td>"+
           '<td class="sh" data-l="Shift"><select data-pp="'+p.id+'" data-f="shift"><option value="day"'+(p.shift!=="night"?" selected":"")+'>Day</option><option value="night"'+(p.shift==="night"?" selected":"")+'>Night</option></select></td>'+
@@ -5476,7 +5489,7 @@ function renderClock(){
             (p.tout && paidMeal(p)>0 ? '<span class="chip appr" title="Worked past '+paidMealAfter()+' hours: a '+paidMealMin()+'-minute paid meal period is added (taken going home)">+'+paidMealMin()+' min paid meal</span>' : "")+
             (p.split ? (function(){ const g=splitGroup(p); return '<span class="chip" title="Clocked in on '+g.length+' jobs at once; the day was split evenly to the half hour">Split '+(g.indexOf(p)+1)+'/'+g.length+'</span>'; })() : "")+
             (p.tout && !p.split && canSeeJob(p.jobId) ? ' <button class="b ghost sm" data-psplit="'+p.id+'" title="Split this punch evenly between several jobs">Split…</button>' : "")+"</td>"+
-          '<td class="n num hrs" data-l="Hours">'+(p.tout?hrs(p.hours):"")+(function(){ const s=paidSpan(p); return s.rounded ? '<div class="mini" title="The job rounds to the half hour; these are the times it pays">'+(s.tout?"pays "+T.clock(s.tin)+"–"+T.clock(s.tout):"from "+T.clock(s.tin))+'</div>' : ""; })()+"</td>"+($$?'<td class="n num cost" data-l="Cost">'+(p.tout?money(p.hours*r):"")+"</td>":"")+
+          '<td class="n num hrs" data-l="Hours">'+(p.tout?hrs(p.hours):"")+(function(){ const s=paidSpan(p); return (s.rounded ? '<div class="mini" title="The job rounds to the half hour; these are the times it pays">'+(s.tout?"pays "+T.clock(s.tin)+"–"+T.clock(s.tout):"from "+T.clock(s.tin))+'</div>' : "")+""; })()+"</td>"+($$?'<td class="n num cost" data-l="Cost">'+(p.tout?money(p.hours*r):"")+"</td>":"")+
           '<td class="del" style="width:26px"><button class="x" data-pdel="'+p.id+'">&times;</button></td></tr>';
       };
   let body = "";
@@ -5725,8 +5738,8 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v73";                /* the label people see: from v63 on it is the same number as the build */
-const APP_BUILD = 73;                     /* what the update check compares (sw.js CACHE "adman-field-v73"); bump both together */
+const APP_VERSION = "v74";                /* the label people see: from v63 on it is the same number as the build */
+const APP_BUILD = 74;                     /* what the update check compares (sw.js CACHE "adman-field-v74"); bump both together */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
