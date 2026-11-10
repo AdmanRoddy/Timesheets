@@ -315,6 +315,7 @@ a.b.big small{display:block;font-family:Inter,sans-serif;font-weight:400;font-si
 .spjob{border:1.5px solid var(--line);border-radius:12px;padding:10px 14px;margin:8px 0;background:var(--tile)}
 .spjob h4{margin:0 0 6px;font-family:"Barlow Semi Condensed",sans-serif;font-size:17px}
 .spitem{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:6px 0;border-top:1px solid var(--line-2)}
+button.lnk{background:none;border:0;padding:0;font:inherit;color:var(--red);text-decoration:underline;cursor:pointer}
 .spitem a.lnk{color:var(--navy);word-break:break-all;max-width:420px}
 .onclock{background:rgba(30,122,70,.1);border-left:5px solid var(--ok);padding:14px 16px;font-size:16px;margin-bottom:14px;border-radius:0 10px 10px 0}
 .cal{width:100%;border-collapse:collapse;table-layout:fixed}
@@ -2140,9 +2141,9 @@ function post(p){
     else { line = {empId:p.empId, rt:"", ot:"", dt:"", punchId:p.id}; f.crew.push(line); }
   }
   line.empId = p.empId;
-  if(!p.tout){ if(!typed && !line._e) line.open = true; return; }         // on the clock: his name is on the sheet now, hours come at clock-out
+  if(!p.tout){ if(!typed && !handTyped(line)) line.open = true; return; }         // on the clock: his name is on the sheet now, hours come at clock-out
   delete line.open;
-  if(!line._e && !typed){ const s = lineSplit(p); line.rt = s.rt; line.ot = s.ot||""; line.dt = s.dt||""; }   // never undo an office correction
+  if(!handTyped(line) && !typed){ const s = lineSplit(p); line.rt = s.rt; line.ot = s.ot||""; line.dt = s.dt||""; }   // never undo an office correction
 }
 function repost(p){ unpost(p); post(p); }
 /* paid hours: time on the clock (the paid span, if the job rounds) less the unpaid meal period, once the man's
@@ -2192,15 +2193,18 @@ function refigure(ps){
     let line=null;
     Object.keys(db.days).forEach(d=>dayRec(d).forms.forEach(f=>{ const l=f.crew.find(c=>c.punchId===p.id); if(l) line=l; }));
     if(!line){ post(p); return; }
-    if(!line._e){ const s=lineSplit(p); line.rt=s.rt; line.ot=s.ot||""; line.dt=s.dt||""; }   // a line the office typed or changed is theirs: never re-figured
+    if(!handTyped(line)){ const s=lineSplit(p); line.rt=s.rt; line.ot=s.ot||""; line.dt=s.dt||""; }   // a line the office typed or changed is theirs: never re-figured
   });
   return ps.length;
 }
 const lineOf = p => { const r=db.days[p.date]; if(!r) return null; for(const f of r.forms){ const l=f.crew.find(c=>c.punchId===p.id); if(l) return l; } return null; };
 /* figured under an older rule: the hours, or the Reg/OT/DT split on the daily, no longer match what the rules say today */
+/* A line the office typed carries _e (when). "Use the clock" (v73) stamps _clk as well: the line is a newer edit, so it
+   wins the merge on every device, but it is figured from the punch again and follows the clock rules from then on. */
+const handTyped = c => !!(c && c._e && !(c._clk && c._clk >= c._e));
 function stalePunch(p){
   if(!p.tout) return false;
-  const l = lineOf(p); if(l && l._e) return false;                        // typed by the office: theirs, nothing to re-figure
+  const l = lineOf(p); if(l && handTyped(l)) return false;                 // typed by the office: theirs, nothing to re-figure
   if(Math.abs((+p.hours||0) - punchHours(p)) > 0.005) return true;
   if(!l) return false;
   const s = lineSplit(p), d = (a,b) => Math.abs((+a||0)-(+b||0)) > 0.011;
@@ -2476,7 +2480,8 @@ function formHTML(f,i){
     const lineCost = (+c.rt||0)*r+(+c.ot||0)*r*s.otMult+(+c.dt||0)*r*s.dtMult;
     const op = c.punchId ? db.punches.find(x=>x.id===c.punchId && !x.tout) : null;
     return '<tr><td class="who"><select data-a="crewEmp" data-f="'+f.id+'" data-k="'+k+'"'+(c.punchId?' data-p="'+esc(c.punchId)+'"':"")+'>'+empOpts(c.empId)+'</select>'+clsTag(c.empId, curDate)+
-      (op ? '<div class="mini" style="color:var(--red)">On the clock since '+sinceTxt(paidSpan(op).tin)+(paidSpan(op).rounded?' <span style="color:var(--ink-2)">(in at '+T.clock(op.tin)+')</span>':'')+'</div>' : c.open ? '<div class="mini">On the clock</div>' : "")+'</td>'+
+      (op ? '<div class="mini" style="color:var(--red)">On the clock since '+sinceTxt(paidSpan(op).tin)+(paidSpan(op).rounded?' <span style="color:var(--ink-2)">(in at '+T.clock(op.tin)+')</span>':'')+'</div>' : c.open ? '<div class="mini">On the clock</div>' : "")+
+      (handTyped(c) && c.punchId && !op ? '<div class="mini">Typed by hand · <button class="lnk" data-a="useClock" data-f="'+f.id+'" data-k="'+k+'" data-p="'+esc(c.punchId)+'" title="Throw away the typed hours and figure this line from his clock-in and clock-out again">Use the clock</button></div>' : "")+'</td>'+
       ['rt','ot','dt'].map(h=>'<td class="n h-'+h+'" data-l="'+(h==="rt"?"Reg":h==="ot"?"O.T. 1.5×":"D.T. 2×")+'"><input class="h num" type="number" step="0.25" min="0" data-a="crewH" data-h="'+h+'" data-f="'+f.id+'" data-k="'+k+'" value="'+(c[h]||"")+'"></td>').join("")+
       '<td class="n num hrs" data-l="Hours" data-calc="rowhrs" data-f="'+f.id+'" data-k="'+k+'">'+hrs((+c.rt||0)+(+c.ot||0)+(+c.dt||0))+"</td>"+
       ($$ ? '<td class="n num cost" data-l="Cost" data-calc="rowcost" data-f="'+f.id+'" data-k="'+k+'">'+money(lineCost)+"</td>" : "")+
@@ -2569,7 +2574,7 @@ async function saveDaily(){
       if(p.tout) p.hours = punchHours(p);
     });
   });
-  const fresh = o => { if(o && o._e && o._e >= W.since) o._e = now; };          // edited here: the save moment is what counts
+  const fresh = o => { if(o && o._e && o._e >= W.since){ const clk = !!(o._clk && o._clk >= o._e); o._e = now; if(clk) o._clk = now; } };   // edited here: the save moment is what counts (a Use-the-clock line keeps its clock stamp in step)
   W.forms.forEach(f=>{ fresh(f); (f.crew||[]).forEach(fresh); (f.materials||[]).forEach(fresh);
     ["xh","xm"].forEach(k=>Object.keys(f[k]||{}).forEach(x=>{ if(f[k][x] >= W.since) f[k][x] = now; })); });
   const rec = dayRec(date);
@@ -2656,6 +2661,10 @@ function wireForms(){
         redraw();
       }; break;
       case "crewAdd":  el.onclick  = ()=>{ if(!live()) return; f.crew.push({empId:"",rt:"",ot:"",dt:"",_e:stampNow()}); redraw(); }; break;
+      case "useClock": el.onclick  = ()=>{ if(!live()) return; const c=ln(); if(!c || !c.punchId) return;
+        const p=db.punches.find(x=>x.id===c.punchId); if(!p || !p.tout) return;
+        const s=lineSplit(p); c.rt=s.rt; c.ot=s.ot||""; c.dt=s.dt||""; c._e = c._clk = stampNow();      // v73: hand the line back to the clock
+        redraw(); tell("Figured from the clock: "+hrs(s.rt)+" Reg, "+hrs(s.ot)+" OT, "+hrs(s.dt)+" DT. Save to keep it."); }; break;
       case "crewDel":  el.onclick  = ()=>{ if(!live()) return; const c=ln(); if(!c) return;
         if(c.punchId) workFor(curDate).noLine.add(c.punchId);
         else if(c.empId){ f.xh = f.xh||{}; f.xh["h:"+c.empId] = stampNow(); }       // so a stale copy cannot bring him back
@@ -4490,14 +4499,14 @@ function mergeForm(a, b, skip){
     const k = lineKey(c), have = byKey.get(k);
     if(!have){ const n = copy(c); a.crew.push(n); byKey.set(k, n); return; }
     const takeB = ts(c._e) > ts(have._e) || (!c._e && !have._e && c.punchId && ((have.open && !c.open) || (!c.open && freshLine(have) && !freshLine(c))));
-    if(takeB){ have.rt=c.rt; have.ot=c.ot; have.dt=c.dt; have.empId=c.empId||have.empId; if(c._e) have._e=c._e; if(c.open) have.open=true; else delete have.open; }
+    if(takeB){ have.rt=c.rt; have.ot=c.ot; have.dt=c.dt; have.empId=c.empId||have.empId; if(c._e) have._e=c._e; if(c._clk) have._clk=c._clk; else if(c._e) delete have._clk; if(c.open) have.open=true; else delete have.open; }
   });
   a.crew = a.crew.filter(c=>c.punchId || !(a.xh[lineKey(c)] && ts(a.xh[lineKey(c)]) > ts(c._e)));   // a hand line the office removed stays removed
   const punchedBy = new Map(a.crew.filter(c=>c.punchId).map(c=>[c.empId, c]));
   a.crew = a.crew.filter(c=>{                                                                      // his punch line replaces a hand line for him,
     if(c.punchId || !punchedBy.has(c.empId)) return true;                                          // but the hours the office typed are kept
     const pl = punchedBy.get(c.empId);
-    if(c._e && ts(c._e) > ts(pl._e)){ pl.rt=c.rt; pl.ot=c.ot; pl.dt=c.dt; pl._e=c._e; }
+    if(c._e && ts(c._e) > ts(pl._e)){ pl.rt=c.rt; pl.ot=c.ot; pl.dt=c.dt; pl._e=c._e; if(c._clk) pl._clk=c._clk; else delete pl._clk; }
     return false;
   });
   const mats = new Map(mats0.map(m=>[matKey(m), m]));
@@ -5716,8 +5725,8 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v72";                /* the label people see: from v63 on it is the same number as the build */
-const APP_BUILD = 72;                     /* what the update check compares (sw.js CACHE "adman-field-v72"); bump both together */
+const APP_VERSION = "v73";                /* the label people see: from v63 on it is the same number as the build */
+const APP_BUILD = 73;                     /* what the update check compares (sw.js CACHE "adman-field-v73"); bump both together */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
