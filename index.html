@@ -1980,6 +1980,9 @@ function clockSplit(p, j, used){
   if(db.settings.earlyAs==="ot") ot += early; else dt += early;
   const tot = rt+ot+dt; if(tot>0 && Math.abs(tot-H)>0.001){ rt*=H/tot; ot*=H/tot; dt*=H/tot; }
   rt=r2(rt); ot=r2(ot); dt=r2(H-rt-ot); if(dt<0){ ot=r2(ot+dt); dt=0; }
+  /* v78: with "Round punches to" on, Reg and OT land on the same quarter hours as the total (7.75 / 3.50, not 7.73 / 3.52) */
+  { const q = +db.settings.roundTo||0;
+    if(q>0){ const snap = v => Math.round(v/q)*q; rt = r2(Math.min(H, snap(rt))); ot = r2(Math.max(0, Math.min(H-rt, snap(ot)))); dt = r2(H-rt-ot); if(dt<0){ ot=r2(ot+dt); dt=0; } } }
   if(used == null) used = dayRun(earlierLegs(p).sort(byTin)).reduce((a,s)=>({rt:a.rt+(+s.rt||0), ot:a.ot+(+s.ot||0)}), {rt:0, ot:0});
   const rtRoom = Math.max(0, R - (+used.rt||0));                         // 8 Reg a day across all his jobs (a no-lunch day split across POs)
   if(rt > rtRoom + 0.001){ ot = r2(ot + rt - rtRoom); rt = r2(rtRoom); }
@@ -5753,8 +5756,8 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v77";                /* the label people see: from v63 on it is the same number as the build */
-const APP_BUILD = 77;                     /* what the update check compares (sw.js CACHE "adman-field-v77"); bump both together */
+const APP_VERSION = "v78";                /* the label people see: from v63 on it is the same number as the build */
+const APP_BUILD = 78;                     /* what the update check compares (sw.js CACHE "adman-field-v78"); bump both together */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
