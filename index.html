@@ -1795,7 +1795,9 @@ const jobStart = j => (j && j.start) || db.settings.startTime || "07:00";
 /* Night shift: the same start-time rule as days, later. A night-crew man who clocks in before the night start is paid
    from the start (supers, GFs and foremen, or anyone the office flags, from the real clock-in). Settings > Night shift
    starts (6:00 PM), per job on the Jobs tab. The tablet turns away a night clock-in more than nightEarlyMin early. */
-const jobNightStart = j => (j && j.nstart) || db.settings.nightStart || "18:00";
+/* a night start is an evening time (2:00 PM to 11:59 PM); a morning time (3:00 AM, typed by mistake) is ignored */
+const eveningHM = hm => /^\d{2}:\d{2}$/.test(hm||"") && +hm.slice(0,2) >= 14 ? hm : "";
+const jobNightStart = j => eveningHM(j && j.nstart) || eveningHM(db.settings.nightStart) || "18:00";
 const nightEarlyMin = () => db.settings.nightEarlyMin == null ? 60 : Math.max(0, +db.settings.nightEarlyMin||0);
 function nightStartIso(p){
   const j = job(p.ruleJob) || job(p.jobId), ns = T.atHM(p.date || T.dateOf(p.tin), jobNightStart(j));
@@ -3136,7 +3138,8 @@ function renderJobs(){
     el.onchange = ev => {
       if(p==="rnd"){ j.rnd = ev.target.checked; if(!j.rnd) delete j.rnd; save(); renderJobs(); offerRefigure(j); return; }
       if(p==="rndGrace"){ j.rndGrace = +ev.target.value||0; save(); renderJobs(); offerRefigure(j); return; }
-      if(p==="nstart"){ j.nstart = /^\d{2}:\d{2}$/.test(ev.target.value) ? ev.target.value : ""; save(); renderJobs(); offerRefigureNight(j); return; }
+      if(p==="nstart"){ const v=ev.target.value; if(v && /^\d{2}:\d{2}$/.test(v) && !eveningHM(v)){ tell("Night start on "+j.po+": "+T.clock(T.atHM("2026-01-05", v))+" is a morning time. Pick a time between 2:00 PM and 11:59 PM, or leave it blank for the usual night start."); renderJobs(); return; }
+        j.nstart = eveningHM(v); save(); renderJobs(); offerRefigureNight(j); return; }
       if(p==="sched"||p==="start"||p==="nightShift"){ j[p] = ev.target.value; if(p==="start" && j.start && !/^\d{2}:\d{2}$/.test(j.start)) j.start=""; save(); renderJobs(); if(j.rnd) offerRefigure(j); return; }
       if(p==="oh"||p==="profit") j[p] = ev.target.value==="" ? null : (+ev.target.value||0);
       else if(p==="markupOff"){ j.markupOff = ev.target.checked; save(); renderJobs(); return; }
@@ -3947,7 +3950,7 @@ function renderSettings(){
   step("contract", ()=>{
     const s = db.settings;
     $("setSched").value = s.sched||"5x8"; $("setStart").value = s.startTime||"07:00";
-    $("setNStart").value = s.nightStart||"18:00"; $("setNEarly").value = String(s.nightEarlyMin==null?60:+s.nightEarlyMin||0);
+    $("setNStart").value = eveningHM(s.nightStart)||"18:00"; $("setNEarly").value = String(s.nightEarlyMin==null?60:+s.nightEarlyMin||0);
     $("setAuto").value = s.autoSplit===false ? "0" : "1"; $("setEarly").value = s.earlyAs||"dt";
     $("setNight").value = s.nightShift||"swing"; $("setSwing").value = hasNum(s.swingPct)?s.swingPct:17.3; $("setGrave").value = hasNum(s.gravePct)?s.gravePct:31.4;
     renderHolidays();
@@ -4028,7 +4031,9 @@ $("geoFt").onchange = e=>{ db.settings.geoFt = +e.target.value; save(); };
 $("geoAsk").onchange = e=>{ db.settings.geoAsk = e.target.value==="1"; save(); };
 $("setSched").onchange = e=>{ db.settings.sched = e.target.value; save(); };
 $("setStart").onchange = e=>{ if(/^\d{2}:\d{2}$/.test(e.target.value)){ db.settings.startTime = e.target.value; save(); } };
-$("setNStart").onchange = e=>{ if(/^\d{2}:\d{2}$/.test(e.target.value)){ db.settings.nightStart = e.target.value; save(); offerRefigureNight(); } };
+$("setNStart").onchange = e=>{ const v=e.target.value; if(!/^\d{2}:\d{2}$/.test(v)) return;
+  if(!eveningHM(v)){ tell("Night shift starts in the evening: "+T.clock(T.atHM("2026-01-05", v))+" is not a night start. Pick a time between 2:00 PM and 11:59 PM (6:00 PM is usual)."); e.target.value = db.settings.nightStart && eveningHM(db.settings.nightStart) || "18:00"; return; }
+  db.settings.nightStart = v; save(); offerRefigureNight(); };
 $("setNEarly").onchange = e=>{ db.settings.nightEarlyMin = +e.target.value||0; save(); };
 $("setAuto").onchange  = e=>{ db.settings.autoSplit = e.target.value==="1"; save(); };
 $("setEarly").onchange = e=>{ db.settings.earlyAs = e.target.value; save(); };
@@ -5738,8 +5743,8 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v74";                /* the label people see: from v63 on it is the same number as the build */
-const APP_BUILD = 74;                     /* what the update check compares (sw.js CACHE "adman-field-v74"); bump both together */
+const APP_VERSION = "v75";                /* the label people see: from v63 on it is the same number as the build */
+const APP_BUILD = 75;                     /* what the update check compares (sw.js CACHE "adman-field-v75"); bump both together */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
