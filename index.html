@@ -1994,8 +1994,9 @@ function clockSplit(p, j, used){
 function clockLine(p){
   if(!p || !p.tin) return "";
   const d = iso => DAYNAME[D.dow(T.dateOf(iso))].slice(0,3)+" "+D.short(T.dateOf(iso))+" "+T.clock(iso);
-  const s = p.tout ? lineSplit(p) : null;
-  return "Clock: "+d(p.tin)+(p.tout ? " – "+d(p.tout) : " – on the clock")+(p.date && p.date!==T.dateOf(p.tin) ? " (on the "+D.short(p.date)+" sheet)" : "")+(s && s.why ? " · "+s.why : "");
+  const s = p.tout ? lineSplit(p) : null, rj = job(p.ruleJob) || job(p.jobId);
+  const rule = !rj ? " · no job on this punch" : !jobRound(rj) ? " · half-hour rule off on "+(rj.po||"this job")+": pays the exact minutes" : (p.ruleJob && p.ruleJob!==p.jobId ? " · rounds by "+((job(p.ruleJob)||{}).po||"the first job of the day") : "");
+  return "Clock: "+d(p.tin)+(p.tout ? " – "+d(p.tout) : " – on the clock")+(p.date && p.date!==T.dateOf(p.tin) ? " (on the "+D.short(p.date)+" sheet)" : "")+rule+(s && s.why ? " · "+s.why : "");
 }
 function lineSplit(p){
   const h = Math.round((p.tout ? punchHours(p) : (+p.hours||0))*100)/100;
@@ -5743,8 +5744,8 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v75";                /* the label people see: from v63 on it is the same number as the build */
-const APP_BUILD = 75;                     /* what the update check compares (sw.js CACHE "adman-field-v75"); bump both together */
+const APP_VERSION = "v76";                /* the label people see: from v63 on it is the same number as the build */
+const APP_BUILD = 76;                     /* what the update check compares (sw.js CACHE "adman-field-v76"); bump both together */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
