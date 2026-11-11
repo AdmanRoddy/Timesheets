@@ -3057,6 +3057,15 @@ function rndNote(j){
     "Day shift pays from "+T.clock(st)+" however early he clocks in (supers, GFs and foremen from their real clock-in). Night shift the same from "+T.clock(T.atHM("2026-01-05", jobNightStart(j)))+". "+
     (g ? "Out at "+T.clock(gf)+" or later pays through "+T.clock(q)+", and the same half hour repeats every hour after (out at "+T.clock(new Date(new Date(gf).getTime()+2*3600000).toISOString())+" pays through "+T.clock(new Date(new Date(q).getTime()+2*3600000).toISOString())+"). " : "")+"Real clock times stay on the Digital Timesheet.";
 }
+/* a general setting changed: offer to re-figure this week's finished punches that now disagree with it */
+async function offerRefigureWeek(what){
+  const from = D.add(D.weekEnd(D.iso(new Date())),-6);
+  const ps = db.punches.filter(p=>p.tout && p.date>=from).filter(stalePunch);
+  if(!ps.length) return;
+  if(!await ask("The "+what+" setting changed. Re-figure the "+ps.length+" punch"+(ps.length===1?"":"es")+" this week by it? Lines typed by hand on the dailies stay as they are.")) return;
+  snapshot(true, "before re-figuring ("+what+")");
+  refigure(ps); save(); renderDaily(); tell("Done. "+ps.length+" punch"+(ps.length===1?"":"es")+" re-figured.");
+}
 async function offerRefigureNight(j){
   const from = D.add(D.weekEnd(D.iso(new Date())),-6);
   const ps = db.punches.filter(p=>okShift(p.shift)==="night" && p.tout && p.date>=from && (!j || p.jobId===j.id)).filter(stalePunch);
@@ -4025,8 +4034,8 @@ $("holiShow").onclick = ()=>{
 };
 $("signOut").onclick = ()=>{ kiosk(true); };
 $("admPin").onchange = e=>{ db.settings.adminPin = e.target.value.trim()||"0000"; save(); renderSettings(); };
-$("roundTo").onchange = e=>{ db.settings.roundTo = +e.target.value; save(); };
-$("mealMin").onchange = e=>{ db.settings.mealMin = +e.target.value; save(); };
+$("roundTo").onchange = e=>{ db.settings.roundTo = +e.target.value; save(); offerRefigureWeek("rounding"); };
+$("mealMin").onchange = e=>{ db.settings.mealMin = +e.target.value; save(); offerRefigureWeek("meal period"); };
 $("geoMode").onchange = e=>{ db.settings.geoMode = e.target.value; save(); };
 $("geoFt").onchange = e=>{ db.settings.geoFt = +e.target.value; save(); };
 $("geoAsk").onchange = e=>{ db.settings.geoAsk = e.target.value==="1"; save(); };
@@ -5744,8 +5753,8 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v76";                /* the label people see: from v63 on it is the same number as the build */
-const APP_BUILD = 76;                     /* what the update check compares (sw.js CACHE "adman-field-v76"); bump both together */
+const APP_VERSION = "v77";                /* the label people see: from v63 on it is the same number as the build */
+const APP_BUILD = 77;                     /* what the update check compares (sw.js CACHE "adman-field-v77"); bump both together */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
