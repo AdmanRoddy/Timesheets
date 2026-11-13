@@ -1268,7 +1268,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   }
   root.AdmanExport = { buildWeekly, buildDaily,
     DAILY: { desc: DDESC, mat: DMAT, emp: DEMP }, WEEKLY: { emp: WEMP },
-    descLines: (t) => wrap(t, 110, 1e6) };
+    descLines: (t) => wrap(t, 80, 1e6) };     // v79: the form's description row shows about 87 characters at its font; 110 overran it and Excel clipped both ends
 })(typeof module !== "undefined" ? module.exports : window);
 </script>
 <script>
@@ -5756,8 +5756,8 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v78";                /* the label people see: from v63 on it is the same number as the build */
-const APP_BUILD = 78;                     /* what the update check compares (sw.js CACHE "adman-field-v78"); bump both together */
+const APP_VERSION = "v79";                /* the label people see: from v63 on it is the same number as the build */
+const APP_BUILD = 79;                     /* what the update check compares (sw.js CACHE "adman-field-v79"); bump both together */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
