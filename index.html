@@ -1547,7 +1547,9 @@ function removeRec(key, id){
   const rec = (db[key]||[]).find(x=>x.id===id);
   db[key] = (db[key]||[]).filter(x=>x.id!==id);
   db.tombs = db.tombs || [];
-  if(!db.tombs.some(t=>t.k===key && t.id===id)) db.tombs.push({k:key, id, at:new Date().toISOString(), date:(rec&&rec.date)||undefined});
+  if(!db.tombs.some(t=>t.k===key && t.id===id)) db.tombs.push({k:key, id, at:new Date().toISOString(), date:(rec&&rec.date)||undefined,
+    name: key==="employees" ? (rec&&rec.name)||undefined : undefined});
+  if(key==="employees") GONE = null;
   if(key==="punches"){ SB.gone = SB.gone||new Set(); SB.gone.add(String(id)); }
 }
 
@@ -1606,6 +1608,21 @@ const shiftName = s => s==="night" ? "Night" : "Day";
 
 /* ---------------------------------------------------------------- lookups */
 const emp = id => db.employees.find(e=>e.id===id);
+/* A man taken off the Employees list keeps his name on hours already entered, as the Remove question promises.
+   The name comes from the line itself (stamped when he was removed), then the delete queue, then a local snapshot. */
+let GONE = null;
+function goneNames(){
+  if(GONE) return GONE;
+  GONE = {};
+  (db.tombs||[]).forEach(t=>{ if(t.k==="employees" && t.name) GONE[t.id] = t.name; });
+  try{
+    Object.keys(localStorage).filter(k=>k.startsWith(SNAP_PFX) && k!==SNAP_PFX+"last").forEach(k=>{
+      ((JSON.parse(localStorage.getItem(k)||"{}")||{}).employees||[]).forEach(e=>{ if(e && e.id && e.name && !GONE[e.id]) GONE[e.id] = e.name; });
+    });
+  }catch(e){ }
+  return GONE;
+}
+const empName = (id, c) => { const e = emp(id); if(e) return e.name; return (c && c.empNm) || goneNames()[id] || ""; };
 const job = id => db.jobs.find(j=>j.id===id);
 const pm  = id => db.pms.find(p=>p.id===id);
 const pmOf = jid => { const j=job(jid); return j ? pm(j.pmId) : null; };
@@ -2951,7 +2968,9 @@ function renderCrew(keepFilters){
   });
   $("crewTable").querySelectorAll("[data-edel]").forEach(el=>{
     el.onclick = async ()=>{ if(await ask("Remove this person from the list? Hours already entered keep the name.", true)){
-      removeRec("employees", el.dataset.edel); save(); renderCrew(); } };
+      const id = el.dataset.edel, nm = (emp(id)||{}).name || "";          // his name stays on the hours already entered
+      if(nm) Object.values(db.days||{}).forEach(d=>(d.forms||[]).forEach(f=>(f.crew||[]).forEach(c=>{ if(c.empId===id) c.empNm = nm; })));
+      removeRec("employees", id); save(); renderCrew(); } };
   });
   stamp();
 }
@@ -3239,8 +3258,8 @@ function sheetData(list){
       recs.forEach(r=>{
         r.form.crew.forEach(c=>{
           if(!c.empId) return;
-          const e = emp(c.empId); if(!e) return;
-          const b = byEmp[c.empId] = byEmp[c.empId] || {employee:e.name+clsTxt(c.empId, we), color:foremanColor(c.empId), hours:Array.from({length:7},()=>[0,0,0])};
+          const nm = empName(c.empId, c) || "(not in the employee list)";   // a man off the list still prints: his hours never vanish
+          const b = byEmp[c.empId] = byEmp[c.empId] || {employee:nm+clsTxt(c.empId, we), color:foremanColor(c.empId), hours:Array.from({length:7},()=>[0,0,0])};
           b.hours[r.dow][0]+= +c.rt||0; b.hours[r.dow][1]+= +c.ot||0; b.hours[r.dow][2]+= +c.dt||0;
         });
       });
@@ -4265,10 +4284,10 @@ function exportGaps(s, recs){
   const noJob = [], noMan = [], ghost = [];
   /* a line whose man is not in the employee list: the weekly form has no row to print him on, so his hours vanish
      from that file (the daily file still shows the line, with the name blank) */
-  recs.forEach(r=>{ const dow = D.dow(r.date);
+  recs.forEach(r=>{
     r.form.crew.forEach(c=>{ if(!c.empId || emp(c.empId)) return;
-      const rt=+c.rt||0, ot=+c.ot||0, dt=+c.dt||0, h = dow<5 ? rt+ot+dt : dow===5 ? ot+dt : dt;
-      if(h>0) ghost.push({date:r.date, po:r.job.po, h}); }); });
+      const h = (+c.rt||0)+(+c.ot||0)+(+c.dt||0);
+      if(h>0) ghost.push({id:c.empId, name:empName(c.empId, c), date:r.date, po:r.job.po, h}); }); });
   if(!$("xPm").value && !$("xPo").value) Object.keys(db.days).filter(d=>d>=s.from && d<=s.to).sort().forEach(d=>dayRec(d).forms.forEach(f=>{
     const h=(f.crew||[]).reduce((a,c)=>a+(+c.rt||0)+(+c.ot||0)+(+c.dt||0),0);
     if(h>0 && !(f.jobId && job(f.jobId))) noJob.push({date:d, h});
@@ -4283,9 +4302,14 @@ function gapFlags(g){
     g.wkend.map(x=>esc(x.name)+" "+hrs(x.h)+" "+x.what+" on "+D.short(x.date)+" ("+esc(x.po)+")").join(", ")+". They are still in the daily file and the totals.</div>";
   if(g.noJob.length) h += '<div class="flag"><strong>'+hrs(g.noJob.reduce((a,x)=>a+x.h,0))+' hours are on a daily form with no job picked</strong>, so they reach no export: '+g.noJob.map(x=>D.short(x.date)+" "+hrs(x.h)+" h").join(", ")+". Pick the job on that form.</div>";
   if(g.noMan.length) h += '<div class="flag"><strong>'+hrs(g.noMan.reduce((a,x)=>a+x.h,0))+' hours are on a line with no man picked</strong>: '+g.noMan.map(x=>D.short(x.date)+" "+esc(x.po)+" "+hrs(x.h)+" h").join(", ")+".</div>";
-  if(g.ghost.length) h += '<div class="flag"><strong>'+hrs(g.ghostH)+' hours are on a line whose man is not in the employee list</strong>, so they cannot print on the weekly form: '+
-    g.ghost.map(x=>D.short(x.date)+" "+esc(x.po)+" "+hrs(x.h)+" h").join(", ")+
-    ". Open those dailies and pick the man again (he was most likely removed from the Employees tab). They are still in the daily file and the totals.</div>";
+  if(g.ghost.length){
+    const by = {};
+    g.ghost.forEach(x=>{ const v = by[x.id] = by[x.id] || {name:x.name, h:0, pos:{}}; v.h += x.h; (v.pos[x.po] = v.pos[x.po] || []).push(D.short(x.date)); });
+    h += '<div class="flag warn"><strong>'+hrs(g.ghostH)+' hours are on lines whose man is no longer in the Employees list</strong>: '+
+      Object.values(by).sort((a,b)=>b.h-a.h).map(v=>'<strong>'+esc(v.name||"name not on this device")+'</strong> '+hrs(v.h)+" h on "+
+        Object.keys(v.pos).sort().map(po=>esc(po)+" ("+[...new Set(v.pos[po])].join(", ")+")").join(", ")).join("; ")+
+      ". They do print on the forms under that name. Put the man back on the Employees tab, or pick the right man on those dailies.</div>";
+  }
   return h;
 }
 function preview(){
@@ -4340,8 +4364,6 @@ $("xGo").onclick = async ()=>{
     const inFile = sheets.flatMap(x=>x.blocks).flatMap(b=>b.lines).reduce((a,l)=>a+l.hours.reduce((x,h,di)=>x+h.reduce((y,v,t)=>y+(slot(di,t)?v:0),0),0),0);
     const check = Math.abs(inFile-gp.onWeekly)<0.01
       ? '<div class="flag good">Checked: '+hrs(inFile)+' hours on the weekly sheets'+(gp.wkend.length?", the same as the dailies less the weekend hours the form has no column for.":", the same as the dailies.")+'</div>'
-      : Math.abs(inFile+gp.ghostH-gp.onWeekly)<0.01
-      ? '<div class="flag warn"><strong>'+hrs(gp.ghostH)+' hours short:</strong> '+hrs(inFile)+' hours on the weekly sheets, '+hrs(gp.onWeekly)+' on the dailies. The missing hours are named just below.</div>'
       : '<div class="flag"><strong>Check this file:</strong> '+hrs(inFile)+' hours on the sheets, but '+hrs(gp.onWeekly)+' on the dailies. Tell Josh.</div>';
     $("xOut").innerHTML = check + gapFlags(gp) + '<div class="flag good">Built '+sheets.length+" PM tab"+(sheets.length===1?"":"s")+
       " with "+blocks+" week block"+(blocks===1?"":"s")+", plus Totals."+(money$() ? ($$ ? " Money is in this file." : " Hours only: no money in this file.") : "")+"</div>";
@@ -4363,7 +4385,7 @@ $("xGoDaily").onclick = async ()=>{
         day: DAYNAME[D.dow(date)]+(sh==="night"?": Night":""),
         forms: byDate[key].flatMap(r=>{
           const f=r.form, t=r.t;
-          const crew=f.crew.filter(c=>c.empId).map(c=>({employee:((emp(c.empId)||{}).name||"")+clsTxt(c.empId, date), rt:+c.rt||0, ot:+c.ot||0, dt:+c.dt||0}));
+          const crew=f.crew.filter(c=>c.empId).map(c=>({employee:(empName(c.empId, c)||"(not in the employee list)")+clsTxt(c.empId, date), rt:+c.rt||0, ot:+c.ot||0, dt:+c.dt||0}));
           const mats=f.materials.filter(m=>(+m.qty||0)||(m.desc||"").trim()).map(m=>({qty:+m.qty||0, desc:m.desc||"", unit:$$?(+m.unit||0):0}));
           /* one form prints on one page: 5 description lines, 8 material lines and 23 crew lines; anything more continues on the next form */
           const L = AdmanExport.DAILY, dl = AdmanExport.descLines(f.desc||"");
@@ -4541,7 +4563,7 @@ function mergeForm(a, b, skip){
     const k = lineKey(c), have = byKey.get(k);
     if(!have){ const n = copy(c); a.crew.push(n); byKey.set(k, n); return; }
     const takeB = ts(c._e) > ts(have._e) || (!c._e && !have._e && c.punchId && ((have.open && !c.open) || (!c.open && freshLine(have) && !freshLine(c))));
-    if(takeB){ have.rt=c.rt; have.ot=c.ot; have.dt=c.dt; have.empId=c.empId||have.empId; if(c._e) have._e=c._e; if(c._clk) have._clk=c._clk; else if(c._e) delete have._clk; if(c.open) have.open=true; else delete have.open; }
+    if(takeB){ have.rt=c.rt; have.ot=c.ot; have.dt=c.dt; have.empId=c.empId||have.empId; if(c.empNm) have.empNm=c.empNm; if(c._e) have._e=c._e; if(c._clk) have._clk=c._clk; else if(c._e) delete have._clk; if(c.open) have.open=true; else delete have.open; }
   });
   a.crew = a.crew.filter(c=>c.punchId || !(a.xh[lineKey(c)] && ts(a.xh[lineKey(c)]) > ts(c._e)));   // a hand line the office removed stays removed
   const punchedBy = new Map(a.crew.filter(c=>c.punchId).map(c=>[c.empId, c]));
@@ -5767,8 +5789,8 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v80";                /* the label people see: from v63 on it is the same number as the build */
-const APP_BUILD = 80;                     /* what the update check compares (sw.js CACHE "adman-field-v80"); bump both together */
+const APP_VERSION = "v81";                /* the label people see: from v63 on it is the same number as the build */
+const APP_BUILD = 81;                     /* what the update check compares (sw.js CACHE "adman-field-v81"); bump both together */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
