@@ -4262,14 +4262,20 @@ function exportGaps(s, recs){
   recs.forEach(r=>{ const dow = D.dow(r.date); if(dow<5) return;
     r.form.crew.forEach(c=>{ if(!c.empId) return; const lost = dow===5 ? (+c.rt||0) : (+c.rt||0)+(+c.ot||0);
       if(lost>0) wkend.push({date:r.date, po:r.job.po, name:(emp(c.empId)||{}).name||"?", h:lost, what: dow===5?"Reg":"Reg/OT"}); }); });
-  const noJob = [], noMan = [];
+  const noJob = [], noMan = [], ghost = [];
+  /* a line whose man is not in the employee list: the weekly form has no row to print him on, so his hours vanish
+     from that file (the daily file still shows the line, with the name blank) */
+  recs.forEach(r=>{ const dow = D.dow(r.date);
+    r.form.crew.forEach(c=>{ if(!c.empId || emp(c.empId)) return;
+      const rt=+c.rt||0, ot=+c.ot||0, dt=+c.dt||0, h = dow<5 ? rt+ot+dt : dow===5 ? ot+dt : dt;
+      if(h>0) ghost.push({date:r.date, po:r.job.po, h}); }); });
   if(!$("xPm").value && !$("xPo").value) Object.keys(db.days).filter(d=>d>=s.from && d<=s.to).sort().forEach(d=>dayRec(d).forms.forEach(f=>{
     const h=(f.crew||[]).reduce((a,c)=>a+(+c.rt||0)+(+c.ot||0)+(+c.dt||0),0);
     if(h>0 && !(f.jobId && job(f.jobId))) noJob.push({date:d, h});
   }));
   recs.forEach(r=>r.form.crew.forEach(c=>{ const h=(+c.rt||0)+(+c.ot||0)+(+c.dt||0); if(h>0 && !c.empId) noMan.push({date:r.date, po:r.job.po, h}); }));
   const lostH = wkend.reduce((a,x)=>a+x.h,0);
-  return {daily, onWeekly: daily-lostH, wkend, noJob, noMan};
+  return {daily, onWeekly: daily-lostH, wkend, noJob, noMan, ghost, ghostH: ghost.reduce((a,x)=>a+x.h,0)};
 }
 function gapFlags(g){
   let h = "";
@@ -4277,6 +4283,9 @@ function gapFlags(g){
     g.wkend.map(x=>esc(x.name)+" "+hrs(x.h)+" "+x.what+" on "+D.short(x.date)+" ("+esc(x.po)+")").join(", ")+". They are still in the daily file and the totals.</div>";
   if(g.noJob.length) h += '<div class="flag"><strong>'+hrs(g.noJob.reduce((a,x)=>a+x.h,0))+' hours are on a daily form with no job picked</strong>, so they reach no export: '+g.noJob.map(x=>D.short(x.date)+" "+hrs(x.h)+" h").join(", ")+". Pick the job on that form.</div>";
   if(g.noMan.length) h += '<div class="flag"><strong>'+hrs(g.noMan.reduce((a,x)=>a+x.h,0))+' hours are on a line with no man picked</strong>: '+g.noMan.map(x=>D.short(x.date)+" "+esc(x.po)+" "+hrs(x.h)+" h").join(", ")+".</div>";
+  if(g.ghost.length) h += '<div class="flag"><strong>'+hrs(g.ghostH)+' hours are on a line whose man is not in the employee list</strong>, so they cannot print on the weekly form: '+
+    g.ghost.map(x=>D.short(x.date)+" "+esc(x.po)+" "+hrs(x.h)+" h").join(", ")+
+    ". Open those dailies and pick the man again (he was most likely removed from the Employees tab). They are still in the daily file and the totals.</div>";
   return h;
 }
 function preview(){
@@ -4331,6 +4340,8 @@ $("xGo").onclick = async ()=>{
     const inFile = sheets.flatMap(x=>x.blocks).flatMap(b=>b.lines).reduce((a,l)=>a+l.hours.reduce((x,h,di)=>x+h.reduce((y,v,t)=>y+(slot(di,t)?v:0),0),0),0);
     const check = Math.abs(inFile-gp.onWeekly)<0.01
       ? '<div class="flag good">Checked: '+hrs(inFile)+' hours on the weekly sheets'+(gp.wkend.length?", the same as the dailies less the weekend hours the form has no column for.":", the same as the dailies.")+'</div>'
+      : Math.abs(inFile+gp.ghostH-gp.onWeekly)<0.01
+      ? '<div class="flag warn"><strong>'+hrs(gp.ghostH)+' hours short:</strong> '+hrs(inFile)+' hours on the weekly sheets, '+hrs(gp.onWeekly)+' on the dailies. The missing hours are named just below.</div>'
       : '<div class="flag"><strong>Check this file:</strong> '+hrs(inFile)+' hours on the sheets, but '+hrs(gp.onWeekly)+' on the dailies. Tell Josh.</div>';
     $("xOut").innerHTML = check + gapFlags(gp) + '<div class="flag good">Built '+sheets.length+" PM tab"+(sheets.length===1?"":"s")+
       " with "+blocks+" week block"+(blocks===1?"":"s")+", plus Totals."+(money$() ? ($$ ? " Money is in this file." : " Hours only: no money in this file.") : "")+"</div>";
@@ -5756,8 +5767,8 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v79";                /* the label people see: from v63 on it is the same number as the build */
-const APP_BUILD = 79;                     /* what the update check compares (sw.js CACHE "adman-field-v79"); bump both together */
+const APP_VERSION = "v80";                /* the label people see: from v63 on it is the same number as the build */
+const APP_BUILD = 80;                     /* what the update check compares (sw.js CACHE "adman-field-v80"); bump both together */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
