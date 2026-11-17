@@ -4019,7 +4019,7 @@ $("sbLogin").onclick = async ()=>{
   sbAuthBox();
 };
 $("sbLogout").onclick = async ()=>{
-  if(SB.client){ try{ await SB.client.auth.signOut(); }catch(e){} }
+  if(SB.client){ try{ await SB.client.auth.signOut({scope:"local"}); }catch(e){}   /* this device only: the default signs the login out on EVERY device */ }
   SB.on=false; SB.user=null; SB.role=null; sbTag(); sbAuthBox();
   sbMsg("Signed out. This device is on its own books until someone signs it back in.","warn");
 };
@@ -5799,8 +5799,8 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v82";                /* the label people see: from v63 on it is the same number as the build */
-const APP_BUILD = 82;                     /* what the update check compares (sw.js CACHE "adman-field-v82"); bump both together */
+const APP_VERSION = "v83";                /* the label people see: from v63 on it is the same number as the build */
+const APP_BUILD = 83;                     /* what the update check compares (sw.js CACHE "adman-field-v82"); bump both together */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
