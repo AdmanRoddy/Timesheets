@@ -4470,6 +4470,7 @@ function kSyncTag(){
                  : "Syncing as "+(SB.label||"")+(SB.last?" · last "+T.clock(SB.last):"");
     color = stuck ? "#b45309" : "rgba(255,255,255,.75)";
   }
+  else if(SB.down){ text="NOT SYNCING: the office database is not answering. Punches are saved here and will send on their own when it is back. Keep clocking in as normal."; color="#b45309"; }
   else { text="NOT SYNCING: this iPad is not signed in. Punches are saved here but the office can't see them. Tell the office."; color="#b42318"; }
   el.textContent = text; el.style.color = color;
   el.style.background = (color==="#b42318"||color==="#b45309") ? "rgba(255,255,255,.92)" : "transparent";
@@ -4487,7 +4488,8 @@ function sbTag(){
   const el=$("syncTag"); if(!el) return;
   el.textContent = SB.on
     ? "Signed in as "+(SB.label||"")+" ("+SB.role+" device)"+(SB.last?" · last sync "+T.clock(SB.last):"")+(SB.err?" · "+SB.err:"")+(SB.pushErr?" · "+SB.pushErr:"")
-  : (sbCfg().url ? "Not signed in: this device only" : "Not connected: this device only");
+  : (SB.down ? "Database not answering · this device is still signed in · changes are saved here and will send when it is back"
+    : sbCfg().url ? "Not signed in: this device only" : "Not connected: this device only");
 }
 /* Change tracking. Every record is stamped when it is actually edited on this
    device (save() calls markChanges), and only those records are sent up. A device
@@ -4697,6 +4699,7 @@ async function sbConnect(quiet){
     }
     SB.client = window.supabase.createClient(url, key, { db:{ schema }, auth:{ persistSession:true, autoRefreshToken:true, storageKey:"adman_field_auth" } });
     const { data:{ session } } = await SB.client.auth.getSession();
+    SB.down = false;
     if(!session){ SB.on=false; SB.user=null; SB.role=null; sbTag(); if(!quiet) sbMsg("Connected to the project. Now sign this device in below.","warn"); return false; }
     SB.user = session.user;
     const me = await SB.client.from("users").select("role,label").eq("id", session.user.id).maybeSingle();
@@ -4711,7 +4714,14 @@ async function sbConnect(quiet){
     await sbPull();
     if(!quiet) sbMsg("Connected.","good");
     return true;
-  }catch(e){ SB.on=false; sbTag(); sbMsg("Could not connect: "+esc(e.message)); return false; }
+  }catch(e){
+    SB.on=false;
+    /* signed in, but the database did not answer: that is an outage, not a sign-in problem */
+    SB.down = !!SB.user && /connection pool|timed out|timeout|fetch|network|502|503|504|unavailable/i.test(e.message||"");
+    sbTag();
+    sbMsg(SB.down ? "The office database is not answering right now ("+esc(e.message)+"). Punches and changes are safe on this device and will send on their own when it is back. Nothing to change here."
+                  : "Could not connect: "+esc(e.message));
+    return false; }
   finally{ SB.connecting = false; }
 }
 async function sbPushAuthoritative(){
@@ -5789,8 +5799,8 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v81";                /* the label people see: from v63 on it is the same number as the build */
-const APP_BUILD = 81;                     /* what the update check compares (sw.js CACHE "adman-field-v81"); bump both together */
+const APP_VERSION = "v82";                /* the label people see: from v63 on it is the same number as the build */
+const APP_BUILD = 82;                     /* what the update check compares (sw.js CACHE "adman-field-v82"); bump both together */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
