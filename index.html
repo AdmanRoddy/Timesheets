@@ -1968,6 +1968,7 @@ function evenShare(p, g){
 }
 /* Reg/OT/DT for one punch by the clock. `used`: the Reg and 1.5x his earlier legs today already took (figured here if not given) */
 function clockSplit(p, j, used){
+  j = job(p.ruleJob) || j;   // v84: a day split across POs keeps the first PO's start and quitting time on every leg (the same job its rounding follows)
   const H = Math.round((p.tout ? punchHours(p) : (+p.hours||0))*100)/100;   // from the clock times as they stand, never an older rule's figure
   const z = {rt:0, ot:0, dt:0};
   if(!(H>0) || !p.tin || !p.tout) return Object.assign(z, {rt:H});
@@ -5799,8 +5800,8 @@ if("serviceWorker" in navigator && location.protocol.startsWith("http"))
    keep running an old copy for days. Every 10 minutes (and whenever it wakes
    up) it checks GitHub for a newer version; if there is one it reloads itself
    the next time the keypad is sitting idle. The office gets a Reload button. */
-const APP_VERSION = "v83";                /* the label people see: from v63 on it is the same number as the build */
-const APP_BUILD = 83;                     /* what the update check compares (sw.js CACHE "adman-field-v82"); bump both together */
+const APP_VERSION = "v84";                /* the label people see: from v63 on it is the same number as the build */
+const APP_BUILD = 84;                     /* what the update check compares (sw.js CACHE "adman-field-v82"); bump both together */
 const SAMPLE_HINT = "";
 if(SAMPLE_HINT){ $("kHint").textContent = SAMPLE_HINT; $("kHint").hidden = false; }
 let UPD = {ready:null, checking:false};
